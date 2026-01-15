@@ -1,0 +1,80 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "custom-1768472223556": {
+      "api": "https://v2.codesome.cn",
+      "name": "测试",
+      "models": {
+        "haiku": {
+          "name": "haiku"
+        }
+      },
+      "options": {
+        "apiKey": "sk-a53b5c771d8d275288d34898e461dc11419663ac6c21be5590fb8eecbc04e1fe"
+      }
+    },
+    "custom-1768475046478": {
+      "api": "https://v2.codesome.cn",
+      "name": "test",
+      "models": {
+        "haiku": {
+          "name": "haiku"
+        }
+      }
+    },
+    "custom-1768476564471": {
+      "api": "https://v2.codesome.cn",
+      "name": "test",
+      "models": {
+        "haku": {
+          "name": "haku"
+        }
+      }
+    },
+    "custom-1768476753574": {
+      "api": "https://v2.codesome.cn",
+      "name": "test",
+      "models": {
+        "haiku": {
+          "name": "haiku"
+        }
+      }
+    },
+    "custom-1768476831228": {
+      "api": "https://v2.codesome.cn",
+      "name": "test",
+      "models": {
+        "haiku": {
+          "name": "haiku"
+        }
+      }
+    },
+    "custom-1768477749099": {
+      "api": "https://v2.codesome.cn",
+      "name": "test",
+      "models": {
+        "haiku": {
+          "name": "haiku"
+        }
+      }
+    },
+    "custom-1768481441273": {
+      "api": "https://v2.codesome.cn",
+      "name": "test",
+      "models": {
+        "haiku": {
+          "name": "haiku"
+        }
+      }
+    },
+    "custom-1768481990174": {
+      "api": "https://v2.codesome.cn",
+      "name": "test",
+      "models": {
+        "haiku": {
+          "name": "haiku"
+        }
+      }
+    }
+  }
+}
