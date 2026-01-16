@@ -63,6 +63,7 @@ import { useServer } from "@/context/server"
 import { useScheduler } from "@/context/scheduler"
 import { TaskList, TaskDetail, DialogCreateTask } from "@/components/scheduler"
 import { FileSystemTab } from "@/components/file-system-tab"
+import { SidebarTerminalPane } from "@/components/sidebar-terminal-pane"
 
 export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
@@ -1089,6 +1090,10 @@ export default function Layout(props: ParentProps) {
   const SidebarContent = (sidebarProps: { mobile?: boolean }) => {
     const expanded = () => sidebarProps.mobile || layout.sidebar.opened()
     const scheduler = useScheduler()
+    const toggleTerminal = () => {
+      scheduler.toggleSidebarTerminal()
+      if (sidebarProps.mobile) layout.mobileSidebar.hide()
+    }
 
     const openCreateTaskDialog = () => {
       dialog.show(() => <DialogCreateTask />)
@@ -1202,6 +1207,16 @@ export default function Layout(props: ParentProps) {
                   <Icon name="checklist" size="small" />
                   <span class="text-12-medium truncate">定时任务</span>
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  class="flex-1 min-w-0 justify-center px-2"
+                  data-active={scheduler.state.sidebarTerminalVisible}
+                  onClick={toggleTerminal}
+                >
+                  <Icon name="console" size="small" />
+                  <span class="text-12-medium truncate">终端</span>
+                </Button>
               </div>
             </Show>
             <Show when={!expanded()}>
@@ -1237,6 +1252,17 @@ export default function Layout(props: ParentProps) {
                     onClick={() => scheduler.setView("scheduler")}
                   >
                     <Icon name="checklist" size="small" />
+                  </Button>
+                </Tooltip>
+                <Tooltip placement="right" value="终端">
+                  <Button
+                    variant="ghost"
+                    size="large"
+                    class="w-full justify-center p-0 aspect-square"
+                    data-active={scheduler.state.sidebarTerminalVisible}
+                    onClick={toggleTerminal}
+                  >
+                    <Icon name="console" size="small" />
                   </Button>
                 </Tooltip>
               </div>
@@ -1369,6 +1395,16 @@ export default function Layout(props: ParentProps) {
   return (
     <div class="relative flex-1 min-h-0 flex flex-col select-none [&_input]:select-text [&_textarea]:select-text [&_[contenteditable]]:select-text">
       <div class="flex-1 min-h-0 flex">
+        <Show when={!params.dir && !isLargeViewport() && !layout.mobileSidebar.opened()}>
+          <button
+            type="button"
+            class="xl:hidden fixed left-2 z-30 size-10 flex items-center justify-center rounded-lg border border-border-weak-base bg-background-base shadow-sm hover:bg-surface-raised-base-hover active:bg-surface-raised-base-active transition-colors"
+            style={{ top: "calc(env(safe-area-inset-top) + 8px)" }}
+            onClick={layout.mobileSidebar.toggle}
+          >
+            <Icon name="menu" size="small" />
+          </button>
+        </Show>
         <div
           classList={{
             "hidden xl:block": true,
@@ -1429,7 +1465,10 @@ export default function Layout(props: ParentProps) {
           </div>
         </div>
 
-        <main class="size-full overflow-x-hidden flex flex-col items-start contain-strict">{props.children}</main>
+        <main class="size-full overflow-x-hidden flex flex-col items-start contain-strict">
+          {props.children}
+          <SidebarTerminalPane />
+        </main>
       </div>
       <Toast.Region />
     </div>

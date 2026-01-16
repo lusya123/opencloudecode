@@ -1,6 +1,7 @@
 [data-component="resize-handle"] {
   position: absolute;
   z-index: 10;
+  touch-action: none;
 
   &::after {
     content: "";
@@ -44,5 +45,14 @@
       inset-block-start: 50%;
       transform: translateY(-50%);
     }
+  }
+}
+
+@media (pointer: coarse) {
+  [data-component="resize-handle"][data-direction="horizontal"] {
+    width: 14px;
+  }
+  [data-component="resize-handle"][data-direction="vertical"] {
+    height: 14px;
   }
 }

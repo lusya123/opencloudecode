@@ -16,6 +16,7 @@ export type LocalPTY = {
 }
 
 const WORKSPACE_KEY = "__workspace__"
+const GLOBAL_KEY = "__global__"
 const MAX_TERMINAL_SESSIONS = 20
 
 type TerminalSession = ReturnType<typeof createTerminalSession>
@@ -185,7 +186,7 @@ export const { use: useTerminal, provider: TerminalProvider } = createSimpleCont
       return entry.value
     }
 
-    const session = createMemo(() => load(params.dir!, params.id))
+    const session = createMemo(() => load(params.dir ?? GLOBAL_KEY, params.id))
 
     return {
       ready: () => session().ready(),

@@ -30,6 +30,7 @@ interface SchedulerState {
   loading: boolean
   selectedTaskId: string | null
   view: "workspace" | "scheduler" | "filesystem"
+  sidebarTerminalVisible: boolean
 }
 
 interface SchedulerContextValue {
@@ -41,6 +42,8 @@ interface SchedulerContextValue {
   updateTask: (taskId: string, input: UpdateTaskInput) => Promise<SchedulerTask>
   deleteTask: (taskId: string) => Promise<void>
   runTask: (taskId: string) => Promise<string | undefined>
+  toggleSidebarTerminal: () => void
+  setSidebarTerminalVisible: (visible: boolean) => void
 }
 
 const SchedulerContext = createContext<SchedulerContextValue>()
@@ -54,6 +57,7 @@ export function SchedulerProvider(props: ParentProps) {
     loading: false,
     selectedTaskId: null,
     view: "workspace",
+    sidebarTerminalVisible: false,
   })
 
   const baseUrl = globalSDK.url
@@ -127,6 +131,14 @@ export function SchedulerProvider(props: ParentProps) {
     setState("selectedTaskId", taskId)
   }
 
+  function toggleSidebarTerminal() {
+    setState("sidebarTerminalVisible", (v) => !v)
+  }
+
+  function setSidebarTerminalVisible(visible: boolean) {
+    setState("sidebarTerminalVisible", visible)
+  }
+
   onMount(() => {
     const unsub = globalSDK.event.listen((e) => {
       if (e.name !== "global") return
@@ -160,6 +172,8 @@ export function SchedulerProvider(props: ParentProps) {
     updateTask,
     deleteTask,
     runTask,
+    toggleSidebarTerminal,
+    setSidebarTerminalVisible,
   }
 
   return <SchedulerContext.Provider value={value}>{props.children}</SchedulerContext.Provider>

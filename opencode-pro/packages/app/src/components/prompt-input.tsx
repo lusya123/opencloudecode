@@ -56,6 +56,7 @@ import { Binary } from "@opencode-ai/util/binary"
 import { showToast } from "@opencode-ai/ui/toast"
 import { base64Encode } from "@opencode-ai/util/encode"
 import { getModelDisplayName } from "@/utils/model-display"
+import { INSERT_TEXT_EVENT, type InsertPayload } from "@/utils/insert-text"
 
 const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
 const ACCEPTED_FILE_TYPES = [...ACCEPTED_IMAGE_TYPES, "application/pdf"]
@@ -383,15 +384,30 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
   }
 
+  const handleInsertText = (event: Event) => {
+    const payload = (event as CustomEvent<InsertPayload>).detail
+    if (!payload) return
+    if (payload.target && payload.target !== "prompt") return
+
+    const text =
+      payload.text ??
+      (payload.paths && payload.paths.length > 0 ? payload.paths.join("\n") : "")
+
+    if (!text) return
+    addPart({ type: "text", content: text, start: 0, end: 0 })
+  }
+
   onMount(() => {
     document.addEventListener("dragover", handleGlobalDragOver)
     document.addEventListener("dragleave", handleGlobalDragLeave)
     document.addEventListener("drop", handleGlobalDrop)
+    document.addEventListener(INSERT_TEXT_EVENT, handleInsertText)
   })
   onCleanup(() => {
     document.removeEventListener("dragover", handleGlobalDragOver)
     document.removeEventListener("dragleave", handleGlobalDragLeave)
     document.removeEventListener("drop", handleGlobalDrop)
+    document.removeEventListener(INSERT_TEXT_EVENT, handleInsertText)
   })
 
   createEffect(() => {

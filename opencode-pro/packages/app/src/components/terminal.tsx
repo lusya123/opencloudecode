@@ -2,14 +2,77 @@ import type { Ghostty, Terminal as Term, FitAddon } from "ghostty-web"
 import { ComponentProps, createEffect, createSignal, onCleanup, onMount, splitProps } from "solid-js"
 import { useSDK } from "@/context/sdk"
 import { SerializeAddon } from "@/addons/serialize"
-import { LocalPTY } from "@/context/terminal"
+import { LocalPTY, useTerminal } from "@/context/terminal"
 import { resolveThemeVariant, useTheme, withAlpha, type HexColor } from "@opencode-ai/ui/theme"
+import { INSERT_TEXT_EVENT, type InsertPayload } from "@/utils/insert-text"
 
 export interface TerminalProps extends ComponentProps<"div"> {
   pty: LocalPTY
   onSubmit?: () => void
   onCleanup?: (pty: LocalPTY) => void
   onConnectError?: (error: unknown) => void
+}
+
+function shellQuotePosix(input: string) {
+  if (!input) return "''"
+  if (/^[a-zA-Z0-9_./:-]+$/.test(input)) return input
+  return `'${input.replace(/'/g, `'\"'\"'`)}'`
+}
+
+function parseDroppedPaths(dt: DataTransfer | null): string[] {
+  if (!dt) return []
+
+  const jsonPayload = dt.getData("application/x-file-paths")
+  if (jsonPayload) {
+    try {
+      const parsed = JSON.parse(jsonPayload)
+      if (Array.isArray(parsed)) return parsed.filter((x) => typeof x === "string").map((x) => x.trim()).filter(Boolean)
+    } catch {
+      // ignore
+    }
+  }
+
+  const text = dt.getData("text/plain")?.trim()
+  if (text?.startsWith("filepath:")) {
+    return text
+      .slice("filepath:".length)
+      .split("\n")
+      .map((x) => x.trim())
+      .filter(Boolean)
+  }
+
+  const uriList = dt.getData("text/uri-list")?.trim()
+  if (uriList) {
+    const uris = uriList
+      .split("\n")
+      .map((x) => x.trim())
+      .filter((x) => x && !x.startsWith("#"))
+    const paths = uris
+      .map((u) => {
+        if (!u.startsWith("file://")) return undefined
+        try {
+          return decodeURIComponent(u.slice("file://".length))
+        } catch {
+          return u.slice("file://".length)
+        }
+      })
+      .filter((x): x is string => Boolean(x))
+    if (paths.length) return paths
+  }
+
+  return []
+}
+
+function canAcceptDrop(dt: DataTransfer | null) {
+  if (!dt) return false
+  const types = Array.from(dt.types ?? [])
+  if (types.includes("application/x-file-paths")) return true
+  if (types.includes("text/uri-list")) return true
+  if (types.includes("text/plain")) {
+    const text = dt.getData("text/plain")?.trim()
+    return Boolean(text?.startsWith("filepath:"))
+  }
+  return false
 }
 
 type TerminalColors = {
@@ -37,6 +100,7 @@ const DEFAULT_TERMINAL_COLORS: Record<"light" | "dark", TerminalColors> = {
 export const Terminal = (props: TerminalProps) => {
   const sdk = useSDK()
   const theme = useTheme()
+  const terminalContext = useTerminal()
   let container!: HTMLDivElement
   const [local, others] = splitProps(props, ["pty", "class", "classList", "onConnectError"])
   let ws: WebSocket | undefined
@@ -47,6 +111,9 @@ export const Terminal = (props: TerminalProps) => {
   let handleResize: () => void
   let handleTextareaFocus: () => void
   let handleTextareaBlur: () => void
+  let handleDragOver: (e: globalThis.DragEvent) => void
+  let handleDrop: (e: globalThis.DragEvent) => void
+  let handleInsertText: ((e: Event) => void) | undefined
   let reconnect: number | undefined
   let disposed = false
 
@@ -96,9 +163,9 @@ export const Terminal = (props: TerminalProps) => {
     focusTerminal()
   }
 
-  onMount(async () => {
-    const mod = await import("ghostty-web")
-    ghostty = await mod.Ghostty.load()
+	  onMount(async () => {
+	    const mod = await import("ghostty-web")
+	    ghostty = await mod.Ghostty.load()
 
     const url = new URL(sdk.url + `/pty/${local.pty.id}/connect?directory=${encodeURIComponent(sdk.directory)}`)
     if (window.__OPENCODE__?.serverPassword) {
@@ -174,13 +241,51 @@ export const Terminal = (props: TerminalProps) => {
     t.loadAddon(serializeAddon)
     t.loadAddon(fitAddon)
 
-    t.open(container)
-    container.addEventListener("pointerdown", handlePointerDown)
+	    t.open(container)
+	    container.addEventListener("pointerdown", handlePointerDown)
 
-    handleTextareaFocus = () => {
-      t.options.cursorBlink = true
-    }
-    handleTextareaBlur = () => {
+	    handleDragOver = (e) => {
+	      if (!canAcceptDrop(e.dataTransfer)) return
+	      e.preventDefault()
+	      e.dataTransfer!.dropEffect = "copy"
+	    }
+	    handleDrop = (e) => {
+	      const paths = parseDroppedPaths(e.dataTransfer)
+	      if (paths.length === 0) return
+	      e.preventDefault()
+	      e.stopPropagation()
+
+	      const socket = ws
+	      if (!socket || socket.readyState !== WebSocket.OPEN) return
+	      socket.send(paths.map(shellQuotePosix).join(" ") + " ")
+	      focusTerminal()
+	    }
+	    container.addEventListener("dragover", handleDragOver, true)
+	    container.addEventListener("drop", handleDrop, true)
+
+      handleInsertText = (event) => {
+        const payload = (event as CustomEvent<InsertPayload>).detail
+        if (!payload) return
+        if (payload.target !== "terminal") return
+        if (terminalContext.active() !== local.pty.id) return
+
+        const socket = ws
+        if (!socket || socket.readyState !== WebSocket.OPEN) return
+
+        const text =
+          payload.text ??
+          (payload.paths && payload.paths.length > 0 ? payload.paths.map(shellQuotePosix).join(" ") + " " : "")
+        if (!text) return
+
+        socket.send(text)
+        focusTerminal()
+      }
+      document.addEventListener(INSERT_TEXT_EVENT, handleInsertText)
+
+	    handleTextareaFocus = () => {
+	      t.options.cursorBlink = true
+	    }
+	    handleTextareaBlur = () => {
       t.options.cursorBlink = false
     }
 
@@ -254,15 +359,18 @@ export const Terminal = (props: TerminalProps) => {
     })
   })
 
-  onCleanup(() => {
-    if (handleResize) {
-      window.removeEventListener("resize", handleResize)
-    }
-    container.removeEventListener("pointerdown", handlePointerDown)
-    term?.textarea?.removeEventListener("focus", handleTextareaFocus)
-    term?.textarea?.removeEventListener("blur", handleTextareaBlur)
+	  onCleanup(() => {
+	    if (handleResize) {
+	      window.removeEventListener("resize", handleResize)
+	    }
+	    container.removeEventListener("pointerdown", handlePointerDown)
+	    if (handleDragOver) container.removeEventListener("dragover", handleDragOver, true)
+	    if (handleDrop) container.removeEventListener("drop", handleDrop, true)
+      if (handleInsertText) document.removeEventListener(INSERT_TEXT_EVENT, handleInsertText)
+	    term?.textarea?.removeEventListener("focus", handleTextareaFocus)
+	    term?.textarea?.removeEventListener("blur", handleTextareaBlur)
 
-    const t = term
+	    const t = term
     if (serializeAddon && props.onCleanup && t) {
       const buffer = serializeAddon.serialize()
       props.onCleanup({

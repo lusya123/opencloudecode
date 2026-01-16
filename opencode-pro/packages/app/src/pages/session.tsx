@@ -25,6 +25,7 @@ import type { DragEvent } from "@thisbeyond/solid-dnd"
 import { useSync } from "@/context/sync"
 import { useTerminal, type LocalPTY } from "@/context/terminal"
 import { useLayout } from "@/context/layout"
+import { useScheduler } from "@/context/scheduler"
 import { Terminal } from "@/components/terminal"
 import { checksum, base64Encode, base64Decode } from "@opencode-ai/util/encode"
 import { useDialog } from "@opencode-ai/ui/context/dialog"
@@ -167,9 +168,15 @@ export default function Page() {
   const sdk = useSDK()
   const prompt = usePrompt()
   const permission = usePermission()
+  const scheduler = useScheduler()
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
   const view = createMemo(() => layout.view(sessionKey()))
+  const terminalVisible = createMemo(() => view().terminal.opened() || scheduler.state.sidebarTerminalVisible)
+  const closeTerminal = () => {
+    view().terminal.close()
+    scheduler.setSidebarTerminalVisible(false)
+  }
 
   if (import.meta.env.DEV) {
     createEffect(
@@ -212,6 +219,16 @@ export default function Page() {
   }
 
   const isDesktop = createMediaQuery("(min-width: 768px)")
+  const terminalMinHeight = createMemo(() => (isDesktop() ? 100 : 200))
+  const terminalMaxHeight = createMemo(() => {
+    if (isDesktop()) return window.innerHeight * 0.6
+    return Math.min(window.innerHeight * 0.75, 520)
+  })
+  const terminalHeight = createMemo(() => {
+    const min = terminalMinHeight()
+    const max = terminalMaxHeight()
+    return Math.min(max, Math.max(min, layout.terminal.height()))
+  })
 
   function normalizeTab(tab: string) {
     if (!tab.startsWith("file://")) return tab
@@ -378,7 +395,7 @@ export default function Page() {
   })
 
   createEffect(() => {
-    if (!view().terminal.opened()) return
+    if (!terminalVisible()) return
     if (!terminal.ready()) return
     if (terminal.all().length !== 0) return
     terminal.new()
@@ -1612,19 +1629,21 @@ export default function Page() {
         </Show>
       </div>
 
-      <Show when={isDesktop() && view().terminal.opened()}>
+      <Show when={isDesktop() && terminalVisible()}>
         <div
           class="relative w-full flex-col shrink-0 border-t border-border-weak-base"
-          style={{ height: `${layout.terminal.height()}px` }}
+          style={{ height: `${terminalHeight()}px` }}
         >
           <ResizeHandle
             direction="vertical"
-            size={layout.terminal.height()}
-            min={100}
-            max={window.innerHeight * 0.6}
+            size={terminalHeight()}
+            min={terminalMinHeight()}
+            max={terminalMaxHeight()}
             collapseThreshold={50}
             onResize={layout.terminal.resize}
-            onCollapse={view().terminal.close}
+            onCollapse={() => {
+              closeTerminal()
+            }}
           />
           <Show
             when={terminal.ready()}
@@ -1693,6 +1712,79 @@ export default function Page() {
                 </Show>
               </DragOverlay>
             </DragDropProvider>
+          </Show>
+        </div>
+      </Show>
+
+      <Show when={!isDesktop() && terminalVisible()}>
+        <div
+          class="relative w-full flex-col shrink-0 border-t border-border-weak-base bg-background-stronger pb-[env(safe-area-inset-bottom)]"
+          style={{ height: `${terminalHeight()}px` }}
+        >
+          <ResizeHandle
+            direction="vertical"
+            size={terminalHeight()}
+            min={terminalMinHeight()}
+            max={terminalMaxHeight()}
+            collapseThreshold={80}
+            onResize={layout.terminal.resize}
+            onCollapse={() => {
+              closeTerminal()
+            }}
+          />
+
+          <div class="h-10 flex items-center gap-2 px-2 border-b border-border-weak-base bg-background-stronger shrink-0">
+            <Icon name="console" size="small" />
+            <div class="text-14-medium text-text-strong">Terminal</div>
+            <div class="flex-1" />
+            <IconButton icon="plus-small" variant="ghost" iconSize="large" onClick={terminal.new} />
+            <IconButton icon="close" variant="ghost" iconSize="large" onClick={closeTerminal} />
+          </div>
+
+          <Show
+            when={terminal.ready()}
+            fallback={
+              <div class="flex flex-col h-full pointer-events-none">
+                <div class="h-10 flex items-center gap-2 px-2 border-b border-border-weak-base bg-background-stronger overflow-hidden">
+                  <For each={handoff.terminals}>
+                    {(title) => (
+                      <div class="px-2 py-1 rounded-md bg-surface-base text-14-regular text-text-weak truncate max-w-40">
+                        {title}
+                      </div>
+                    )}
+                  </For>
+                  <div class="flex-1" />
+                  <div class="text-text-weak pr-2">Loading...</div>
+                </div>
+                <div class="flex-1 flex items-center justify-center text-text-weak">Loading terminal...</div>
+              </div>
+            }
+          >
+            <Tabs variant="alt" value={terminal.active()} onChange={terminal.open}>
+              <Tabs.List class="h-10 overflow-x-auto no-scrollbar">
+                <For each={terminal.all()}>
+                  {(pty: LocalPTY) => (
+                    <Tabs.Trigger
+                      value={pty.id}
+                      closeButton={
+                        terminal.all().length > 1 && (
+                          <IconButton icon="close" variant="ghost" onClick={() => terminal.close(pty.id)} />
+                        )
+                      }
+                    >
+                      {pty.title}
+                    </Tabs.Trigger>
+                  )}
+                </For>
+              </Tabs.List>
+              <For each={terminal.all()}>
+                {(pty) => (
+                  <Tabs.Content value={pty.id}>
+                    <Terminal pty={pty} onCleanup={terminal.update} onConnectError={() => terminal.clone(pty.id)} />
+                  </Tabs.Content>
+                )}
+              </For>
+            </Tabs>
           </Show>
         </div>
       </Show>

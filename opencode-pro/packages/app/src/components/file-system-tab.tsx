@@ -11,11 +11,14 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import type { FileNode } from "@opencode-ai/sdk/v2"
 import { useParams } from "@solidjs/router"
 import { base64Decode } from "@opencode-ai/util/encode"
+import { useLayout } from "@/context/layout"
+import { dispatchInsertText } from "@/utils/insert-text"
 
 type RootType = "project" | "root"
 
 interface FlatNode {
   node: FileNode
+  requestPath: string
   level: number
   isExpanded: boolean
   isLoading: boolean
@@ -39,11 +42,22 @@ const VIRTUAL_SCROLL_THRESHOLD = 100
 export function FileSystemTab() {
   const globalSDK = useGlobalSDK()
   const params = useParams()
+  const layout = useLayout()
 
   const systemRoot = "/"
 
+  const initialProjectRoot = (() => {
+    const slug = params.dir
+    if (!slug) return ""
+    try {
+      return base64Decode(slug)
+    } catch {
+      return ""
+    }
+  })()
+
   const [state, setState] = createStore<FileSystemState>({
-    rootType: "project",
+    rootType: initialProjectRoot ? "project" : "root",
     rootPath: systemRoot,
     addressInput: systemRoot,
     expandedPaths: new Set(),
@@ -63,12 +77,9 @@ export function FileSystemTab() {
     }
   })
 
-  const currentRoot = createMemo(() => {
-    if (state.rootType === "project") return projectRoot()
-    return state.rootPath
-  })
-
-  const listDirectory = createMemo(() => (state.rootType === "project" ? projectRoot() : systemRoot))
+  const directoryForApi = createMemo(() => (state.rootType === "project" ? projectRoot() : systemRoot))
+  const treeRoot = createMemo(() => (state.rootType === "project" ? "" : state.rootPath))
+  const requestPathForNode = (node: FileNode) => (state.rootType === "project" ? node.path : node.absolute)
 
   function normalizePosixPath(input: string) {
     const trimmed = input.trim()
@@ -96,15 +107,15 @@ export function FileSystemTab() {
     const raw = input.trim()
     if (!raw) return ""
     if (raw.startsWith("/")) return normalizePosixPath(raw) || systemRoot
-    const base = currentRoot() || systemRoot
+    const base = state.rootPath || systemRoot
     return normalizePosixPath(`${base.replace(/\/+$/, "")}/${raw}`) || systemRoot
   }
 
   const loadDirectory = async (path: string, opts?: { directory?: string }) => {
     if (state.loadingPaths.has(path)) return
     if (state.children[path]) return
-    const directory = opts?.directory ?? listDirectory()
-    if (!directory) {
+    const directory = opts?.directory ?? directoryForApi()
+    if (state.rootType === "project" && !directory) {
       setState(
         produce((s) => {
           s.errors[path] = "未打开项目，无法读取目录"
@@ -181,6 +192,38 @@ export function FileSystemTab() {
     )
   }
 
+  const openDirectory = (flatNode: FlatNode, event: MouseEvent) => {
+    const node = flatNode.node
+    if (node.type !== "directory") return
+
+    // Keep multi-select behavior: Cmd/Ctrl+Click should only select.
+    if (event.metaKey || event.ctrlKey) {
+      toggleSelect(node.absolute, event)
+      return
+    }
+
+    if (state.rootType === "root") {
+      const nextRootPath = normalizePosixPath(node.absolute) || systemRoot
+      batch(() => {
+        setState("rootPath", nextRootPath)
+        setState("addressInput", nextRootPath)
+        setState("expandedPaths", new Set())
+        setState("selectedPaths", new Set())
+        setState("loadingPaths", new Set())
+        setState("children", {})
+        setState("errors", {})
+      })
+      loadDirectory(nextRootPath, { directory: systemRoot })
+      return
+    }
+
+    batch(() => {
+      toggleSelect(node.absolute, event)
+    })
+
+    toggleExpand(flatNode.requestPath)
+  }
+
   const handleDragStart = (e: DragEvent, node: FileNode) => {
     const paths = state.selectedPaths.has(node.absolute)
       ? Array.from(state.selectedPaths)
@@ -210,9 +253,18 @@ export function FileSystemTab() {
     setTimeout(() => document.body.removeChild(dragImage), 0)
   }
 
+  const insertPaths = (node: FileNode, target: "prompt" | "terminal") => {
+    const paths = state.selectedPaths.has(node.absolute)
+      ? Array.from(state.selectedPaths)
+      : [node.absolute]
+
+    dispatchInsertText({ target, paths })
+    if (layout.mobileSidebar.opened()) layout.mobileSidebar.hide()
+  }
+
   const setRootType = (type: RootType) => {
-    const nextRootPath = type === "project" ? projectRoot() : state.rootPath
     const nextDirectory = type === "project" ? projectRoot() : systemRoot
+    const nextRootPath = type === "project" ? "" : state.rootPath
 
     batch(() => {
       setState("rootType", type)
@@ -223,11 +275,14 @@ export function FileSystemTab() {
       setState("errors", {})
     })
 
-    if (nextRootPath) {
-      if (type === "root") setState("addressInput", nextRootPath)
-      loadDirectory(nextRootPath, { directory: nextDirectory })
-    }
+    if (type === "root") setState("addressInput", state.rootPath)
+    loadDirectory(nextRootPath, { directory: nextDirectory })
   }
+
+  createEffect(() => {
+    if (state.rootType !== "root") return
+    loadDirectory(state.rootPath, { directory: systemRoot })
+  })
 
   // Flatten the tree for virtual scrolling
   const flattenTree = (path: string, level: number): FlatNode[] => {
@@ -239,6 +294,7 @@ export function FileSystemTab() {
     if (isLoading) {
       result.push({
         node: { name: "loading", path: `${path}/__loading__`, absolute: `${path}/__loading__`, type: "file", ignored: false },
+        requestPath: path,
         level,
         isExpanded: false,
         isLoading: true,
@@ -247,6 +303,7 @@ export function FileSystemTab() {
     } else if (error) {
       result.push({
         node: { name: "error", path: `${path}/__error__`, absolute: `${path}/__error__`, type: "file", ignored: false },
+        requestPath: path,
         level,
         isExpanded: false,
         isLoading: false,
@@ -255,9 +312,11 @@ export function FileSystemTab() {
       })
     } else {
       for (const node of children) {
-        const isExpanded = state.expandedPaths.has(node.absolute)
+        const requestPath = requestPathForNode(node)
+        const isExpanded = state.expandedPaths.has(requestPath)
         result.push({
           node,
+          requestPath,
           level,
           isExpanded,
           isLoading: false,
@@ -265,7 +324,7 @@ export function FileSystemTab() {
         })
 
         if (node.type === "directory" && isExpanded) {
-          result.push(...flattenTree(node.absolute, level + 1))
+          result.push(...flattenTree(requestPath, level + 1))
         }
       }
     }
@@ -273,7 +332,7 @@ export function FileSystemTab() {
     return result
   }
 
-  const flatNodes = createMemo(() => flattenTree(currentRoot(), 0))
+  const flatNodes = createMemo(() => flattenTree(treeRoot(), 0))
   const useVirtualScroll = createMemo(() => flatNodes().length > VIRTUAL_SCROLL_THRESHOLD)
 
   let lastProjectRoot = ""
@@ -291,7 +350,7 @@ export function FileSystemTab() {
         setState("errors", {})
       })
     }
-    loadDirectory(root, { directory: root })
+    loadDirectory("", { directory: root })
   })
 
   return (
@@ -307,7 +366,7 @@ export function FileSystemTab() {
             <Icon name="folder" size="small" />
           </Button>
         </Tooltip>
-        <Tooltip value="根目录（可通过地址栏跳转任意路径）" placement="bottom">
+        <Tooltip value="系统目录（/，可通过地址栏跳转任意路径）" placement="bottom">
           <Button
             variant="ghost"
             size="small"
@@ -338,7 +397,7 @@ export function FileSystemTab() {
                 setState("children", {})
                 setState("errors", {})
               })
-              loadDirectory(resolved, { directory: systemRoot })
+              loadDirectory(resolved)
             }}
           />
         </div>
@@ -358,7 +417,9 @@ export function FileSystemTab() {
                       state={state}
                       onToggleExpand={toggleExpand}
                       onToggleSelect={toggleSelect}
+                      onOpenDirectory={openDirectory}
                       onDragStart={handleDragStart}
+                      onInsert={insertPaths}
                     />
                   )}
                 </For>
@@ -367,15 +428,17 @@ export function FileSystemTab() {
           >
             <VList data={flatNodes()} class="flex-1 no-scrollbar" overscan={10}>
               {(flatNode) => (
-                <FlatFileNode
-                  flatNode={flatNode}
-                  state={state}
-                  onToggleExpand={toggleExpand}
-                  onToggleSelect={toggleSelect}
-                  onDragStart={handleDragStart}
-                />
-              )}
-            </VList>
+                  <FlatFileNode
+                    flatNode={flatNode}
+                    state={state}
+                    onToggleExpand={toggleExpand}
+                    onToggleSelect={toggleSelect}
+                    onOpenDirectory={openDirectory}
+                    onDragStart={handleDragStart}
+                    onInsert={insertPaths}
+                  />
+                )}
+              </VList>
           </Show>
         }
       >
@@ -392,7 +455,9 @@ function FlatFileNode(props: {
   state: FileSystemState
   onToggleExpand: (path: string) => void
   onToggleSelect: (path: string, event: MouseEvent) => void
+  onOpenDirectory: (flatNode: FlatNode, event: MouseEvent) => void
   onDragStart: (e: DragEvent, node: FileNode) => void
+  onInsert: (node: FileNode, target: "prompt" | "terminal") => void
 }) {
   const isSelected = createMemo(() => props.state.selectedPaths.has(props.flatNode.node.absolute))
 
@@ -427,22 +492,21 @@ function FlatFileNode(props: {
       <Tooltip forceMount={false} openDelay={2000} value={node.absolute} placement="right">
         <div
           classList={{
-            "p-0.5 w-full flex items-center gap-x-2 hover:bg-background-element cursor-pointer": true,
+            "p-0.5 w-full flex items-center gap-x-2 hover:bg-background-element cursor-pointer min-w-0": true,
             "bg-background-element": isSelected(),
           }}
           style={`padding-left: ${props.flatNode.level * 10}px`}
           draggable={true}
           onDragStart={(e) => props.onDragStart(e, node)}
           onClick={(e) => {
-            props.onToggleSelect(node.absolute, e)
+            props.onOpenDirectory(props.flatNode, e)
           }}
-          onDblClick={() => props.onToggleExpand(node.absolute)}
         >
           <button
             class="p-0.5 hover:bg-background-stronger rounded"
             onClick={(e) => {
               e.stopPropagation()
-              props.onToggleExpand(node.absolute)
+              props.onToggleExpand(props.flatNode.requestPath)
             }}
           >
             <Icon
@@ -462,6 +526,32 @@ function FlatFileNode(props: {
           >
             {node.name}
           </span>
+          <div class="ml-auto flex items-center gap-1 shrink-0">
+            <Button
+              variant="ghost"
+              size="small"
+              class="h-6 px-2 text-12-medium"
+              onClick={(e: MouseEvent) => {
+                e.preventDefault()
+                e.stopPropagation()
+                props.onInsert(node, "prompt")
+              }}
+            >
+              插入
+            </Button>
+            <Button
+              variant="ghost"
+              size="small"
+              class="h-6 px-2 text-12-medium"
+              onClick={(e: MouseEvent) => {
+                e.preventDefault()
+                e.stopPropagation()
+                props.onInsert(node, "terminal")
+              }}
+            >
+              终端
+            </Button>
+          </div>
         </div>
       </Tooltip>
     )
@@ -472,7 +562,7 @@ function FlatFileNode(props: {
     <Tooltip forceMount={false} openDelay={2000} value={node.absolute} placement="right">
       <div
         classList={{
-          "p-0.5 w-full flex items-center gap-x-2 hover:bg-background-element cursor-pointer": true,
+          "p-0.5 w-full flex items-center gap-x-2 hover:bg-background-element cursor-pointer min-w-0": true,
           "bg-background-element": isSelected(),
         }}
         style={`padding-left: ${props.flatNode.level * 10}px`}
@@ -491,6 +581,32 @@ function FlatFileNode(props: {
         >
           {node.name}
         </span>
+        <div class="ml-auto flex items-center gap-1 shrink-0">
+          <Button
+            variant="ghost"
+            size="small"
+            class="h-6 px-2 text-12-medium"
+            onClick={(e: MouseEvent) => {
+              e.preventDefault()
+              e.stopPropagation()
+              props.onInsert(node, "prompt")
+            }}
+          >
+            插入
+          </Button>
+          <Button
+            variant="ghost"
+            size="small"
+            class="h-6 px-2 text-12-medium"
+            onClick={(e: MouseEvent) => {
+              e.preventDefault()
+              e.stopPropagation()
+              props.onInsert(node, "terminal")
+            }}
+          >
+            终端
+          </Button>
+        </div>
       </div>
     </Tooltip>
   )
