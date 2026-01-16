@@ -62,6 +62,7 @@ import { DialogSelectDirectory } from "@/components/dialog-select-directory"
 import { useServer } from "@/context/server"
 import { useScheduler } from "@/context/scheduler"
 import { TaskList, TaskDetail, DialogCreateTask } from "@/components/scheduler"
+import { FileSystemTab } from "@/components/file-system-tab"
 
 export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
@@ -1170,26 +1171,36 @@ export default function Layout(props: ParentProps) {
 
             {/* Navigation Tabs */}
             <Show when={expanded()}>
-              <div class="flex gap-1 w-full shrink-0">
+              <div class="flex gap-1 w-full shrink-0 flex-wrap">
                 <Button
                   variant="ghost"
                   size="small"
-                  class="flex-1 justify-center"
+                  class="flex-1 min-w-0 justify-center px-2"
                   data-active={scheduler.state.view === "workspace"}
                   onClick={() => scheduler.setView("workspace")}
                 >
                   <Icon name="folder" size="small" />
-                  <span class="text-12-medium">Workspace</span>
+                  <span class="text-12-medium truncate">Workspace</span>
                 </Button>
                 <Button
                   variant="ghost"
                   size="small"
-                  class="flex-1 justify-center"
+                  class="flex-1 min-w-0 justify-center px-2"
+                  data-active={scheduler.state.view === "filesystem"}
+                  onClick={() => scheduler.setView("filesystem")}
+                >
+                  <Icon name="code-lines" size="small" />
+                  <span class="text-12-medium truncate">文件系统</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  class="flex-1 min-w-0 justify-center px-2"
                   data-active={scheduler.state.view === "scheduler"}
                   onClick={() => scheduler.setView("scheduler")}
                 >
                   <Icon name="checklist" size="small" />
-                  <span class="text-12-medium">定时任务</span>
+                  <span class="text-12-medium truncate">定时任务</span>
                 </Button>
               </div>
             </Show>
@@ -1204,6 +1215,17 @@ export default function Layout(props: ParentProps) {
                     onClick={() => scheduler.setView("workspace")}
                   >
                     <Icon name="folder" size="small" />
+                  </Button>
+                </Tooltip>
+                <Tooltip placement="right" value="文件系统">
+                  <Button
+                    variant="ghost"
+                    size="large"
+                    class="w-full justify-center p-0 aspect-square"
+                    data-active={scheduler.state.view === "filesystem"}
+                    onClick={() => scheduler.setView("filesystem")}
+                  >
+                    <Icon name="code-lines" size="small" />
                   </Button>
                 </Tooltip>
                 <Tooltip placement="right" value="定时任务">
@@ -1262,6 +1284,9 @@ export default function Layout(props: ParentProps) {
                     <TaskList onCreateTask={openCreateTaskDialog} />
                   </Show>
                 </div>
+              </Match>
+              <Match when={scheduler.state.view === "filesystem"}>
+                <FileSystemTab />
               </Match>
             </Switch>
           </div>

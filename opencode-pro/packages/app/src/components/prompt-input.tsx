@@ -320,7 +320,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
     event.preventDefault()
     const hasFiles = event.dataTransfer?.types.includes("Files")
-    if (hasFiles) {
+    const hasFilePaths = event.dataTransfer?.types.includes("application/x-file-paths")
+    const hasPlainText = event.dataTransfer?.types.includes("text/plain")
+    if (hasFiles || hasFilePaths || hasPlainText) {
       setStore("dragging", true)
     }
   }
@@ -340,6 +342,37 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     event.preventDefault()
     setStore("dragging", false)
 
+    // Handle file paths from file system browser
+    const filePathsJson = event.dataTransfer?.getData("application/x-file-paths")
+    if (filePathsJson) {
+      try {
+        const paths = JSON.parse(filePathsJson) as string[]
+        if (paths.length > 0) {
+          const pathText = paths.join("\n")
+          addPart({ type: "text", content: pathText, start: 0, end: 0 })
+          return
+        }
+      } catch {
+        // Fall through to other handlers
+      }
+    }
+
+    // Handle plain text with filepath: prefix (from file-tree or file-system-tab)
+    const plainText = event.dataTransfer?.getData("text/plain")
+    if (plainText) {
+      if (plainText.startsWith("filepath:")) {
+        const paths = plainText.slice("filepath:".length)
+        addPart({ type: "text", content: paths, start: 0, end: 0 })
+        return
+      }
+      if (plainText.startsWith("file:")) {
+        const path = plainText.slice("file:".length)
+        addPart({ type: "text", content: path, start: 0, end: 0 })
+        return
+      }
+    }
+
+    // Handle image files
     const dropped = event.dataTransfer?.files
     if (!dropped) return
 

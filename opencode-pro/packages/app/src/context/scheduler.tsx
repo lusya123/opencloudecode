@@ -29,12 +29,12 @@ interface SchedulerState {
   tasks: SchedulerTask[]
   loading: boolean
   selectedTaskId: string | null
-  view: "workspace" | "scheduler"
+  view: "workspace" | "scheduler" | "filesystem"
 }
 
 interface SchedulerContextValue {
   state: SchedulerState
-  setView: (view: "workspace" | "scheduler") => void
+  setView: (view: "workspace" | "scheduler" | "filesystem") => void
   selectTask: (taskId: string | null) => void
   loadTasks: () => Promise<void>
   createTask: (input: CreateTaskInput) => Promise<SchedulerTask>
@@ -119,7 +119,7 @@ export function SchedulerProvider(props: ParentProps) {
     return result.sessionId
   }
 
-  function setView(view: "workspace" | "scheduler") {
+  function setView(view: "workspace" | "scheduler" | "filesystem") {
     setState("view", view)
   }
 
@@ -130,7 +130,7 @@ export function SchedulerProvider(props: ParentProps) {
   onMount(() => {
     const unsub = globalSDK.event.listen((e) => {
       if (e.name !== "global") return
-      const payload = e.details
+      const payload = e.details as any
       if (payload?.type === "scheduler.task.created") {
         const task = payload.properties?.task as SchedulerTask
         if (task) {
