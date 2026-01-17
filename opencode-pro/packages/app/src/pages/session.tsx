@@ -1180,9 +1180,9 @@ export default function Page() {
                                   data-message-id={message.id}
                                   classList={{
                                     "min-w-0 w-full max-w-full": true,
-                                    "last:min-h-[calc(100vh-5.5rem-var(--prompt-height,8rem)-64px)] md:last:min-h-[calc(100vh-4.5rem-var(--prompt-height,10rem)-64px)]":
+                                    "last:min-h-[calc(100dvh-5.5rem-var(--prompt-height,8rem)-64px)] md:last:min-h-[calc(100dvh-4.5rem-var(--prompt-height,10rem)-64px)]":
                                       platform.platform !== "desktop",
-                                    "last:min-h-[calc(100vh-7rem-var(--prompt-height,8rem)-64px)] md:last:min-h-[calc(100vh-6rem-var(--prompt-height,10rem)-64px)]":
+                                    "last:min-h-[calc(100dvh-7rem-var(--prompt-height,8rem)-64px)] md:last:min-h-[calc(100dvh-6rem-var(--prompt-height,10rem)-64px)]":
                                       platform.platform === "desktop",
                                   }}
                                 >
@@ -1242,11 +1242,11 @@ export default function Page() {
           {/* Prompt input */}
           <div
             ref={(el) => (promptDock = el)}
-            class="absolute inset-x-0 bottom-0 pt-12 pb-4 md:pb-8 flex flex-col justify-center items-center z-50 px-4 md:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none"
+            class="absolute inset-x-0 bottom-0 pt-6 md:pt-12 pb-[calc(1rem+env(safe-area-inset-bottom))] md:pb-8 flex flex-col justify-center items-center z-50 px-4 md:px-0 bg-gradient-to-t from-background-stronger via-background-stronger to-transparent pointer-events-none max-h-full overflow-hidden"
           >
             <div
               classList={{
-                "w-full md:px-6 pointer-events-auto": true,
+                "w-full md:px-6 pointer-events-auto max-h-full overflow-y-auto": true,
                 "md:max-w-200": !showTabs(),
               }}
             >

@@ -29,13 +29,13 @@ interface SchedulerState {
   tasks: SchedulerTask[]
   loading: boolean
   selectedTaskId: string | null
-  view: "workspace" | "scheduler" | "filesystem"
+  view: "workspace" | "scheduler" | "filesystem" | "claude-switch"
   sidebarTerminalVisible: boolean
 }
 
 interface SchedulerContextValue {
   state: SchedulerState
-  setView: (view: "workspace" | "scheduler" | "filesystem") => void
+  setView: (view: "workspace" | "scheduler" | "filesystem" | "claude-switch") => void
   selectTask: (taskId: string | null) => void
   loadTasks: () => Promise<void>
   createTask: (input: CreateTaskInput) => Promise<SchedulerTask>
@@ -123,7 +123,7 @@ export function SchedulerProvider(props: ParentProps) {
     return result.sessionId
   }
 
-  function setView(view: "workspace" | "scheduler" | "filesystem") {
+  function setView(view: "workspace" | "scheduler" | "filesystem" | "claude-switch") {
     setState("view", view)
   }
 

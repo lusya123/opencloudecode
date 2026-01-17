@@ -21,6 +21,7 @@ import { NotificationProvider } from "@/context/notification"
 import { DialogProvider } from "@opencode-ai/ui/context/dialog"
 import { CommandProvider } from "@/context/command"
 import { SchedulerProvider } from "@/context/scheduler"
+import { CCSwitchProvider } from "@/context/cc-switch"
 import { Logo } from "@opencode-ai/ui/logo"
 import Layout from "@/pages/layout"
 import DirectoryLayout from "@/pages/directory-layout"
@@ -88,7 +89,9 @@ export function AppInterface(props: { defaultUrl?: string }) {
                     <NotificationProvider>
                       <CommandProvider>
                         <SchedulerProvider>
-                          <Layout>{props.children}</Layout>
+                          <CCSwitchProvider>
+                            <Layout>{props.children}</Layout>
+                          </CCSwitchProvider>
                         </SchedulerProvider>
                       </CommandProvider>
                     </NotificationProvider>

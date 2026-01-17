@@ -1,5 +1,6 @@
+pub mod api;
 mod app_config;
-mod app_store;
+pub mod app_store;
 mod auto_launch;
 mod claude_mcp;
 mod claude_plugin;

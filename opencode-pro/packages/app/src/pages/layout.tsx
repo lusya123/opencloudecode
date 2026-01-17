@@ -64,6 +64,7 @@ import { useScheduler } from "@/context/scheduler"
 import { TaskList, TaskDetail, DialogCreateTask } from "@/components/scheduler"
 import { FileSystemTab } from "@/components/file-system-tab"
 import { SidebarTerminalPane } from "@/components/sidebar-terminal-pane"
+import { ClaudeSwitchTab } from "@/components/claude-switch-tab"
 
 export default function Layout(props: ParentProps) {
   const [store, setStore] = createStore({
@@ -1217,6 +1218,16 @@ export default function Layout(props: ParentProps) {
                   <Icon name="console" size="small" />
                   <span class="text-12-medium truncate">终端</span>
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="small"
+                  class="flex-1 min-w-0 justify-center px-2"
+                  data-active={scheduler.state.view === "claude-switch"}
+                  onClick={() => scheduler.setView("claude-switch")}
+                >
+                  <Icon name="server" size="small" />
+                  <span class="text-12-medium truncate">Claude切换</span>
+                </Button>
               </div>
             </Show>
             <Show when={!expanded()}>
@@ -1263,6 +1274,17 @@ export default function Layout(props: ParentProps) {
                     onClick={toggleTerminal}
                   >
                     <Icon name="console" size="small" />
+                  </Button>
+                </Tooltip>
+                <Tooltip placement="right" value="Claude切换">
+                  <Button
+                    variant="ghost"
+                    size="large"
+                    class="w-full justify-center p-0 aspect-square"
+                    data-active={scheduler.state.view === "claude-switch"}
+                    onClick={() => scheduler.setView("claude-switch")}
+                  >
+                    <Icon name="server" size="small" />
                   </Button>
                 </Tooltip>
               </div>
@@ -1313,6 +1335,9 @@ export default function Layout(props: ParentProps) {
               </Match>
               <Match when={scheduler.state.view === "filesystem"}>
                 <FileSystemTab />
+              </Match>
+              <Match when={scheduler.state.view === "claude-switch"}>
+                <ClaudeSwitchTab />
               </Match>
             </Switch>
           </div>

@@ -1355,7 +1355,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   return (
-    <div class="relative size-full _max-h-[320px] flex flex-col gap-3">
+    <div class="relative w-full max-h-[45dvh] md:max-h-[320px] flex flex-col gap-3">
       <Show when={store.popover}>
         <div
           ref={(el) => {
@@ -1568,7 +1568,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             </For>
           </div>
         </Show>
-        <div class="relative max-h-[240px] overflow-y-auto" ref={(el) => (scrollRef = el)}>
+        <div class="relative max-h-[30dvh] md:max-h-[240px] overflow-y-auto" ref={(el) => (scrollRef = el)}>
           <div
             data-component="prompt-input"
             ref={(el) => {

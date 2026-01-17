@@ -4,6 +4,32 @@ import { useSDK } from "@/context/sdk"
 import { SerializeAddon } from "@/addons/serialize"
 import { LocalPTY } from "@/context/terminal"
 import { resolveThemeVariant, useTheme, withAlpha, type HexColor } from "@opencode-ai/ui/theme"
+import {
+  encodeXtermMouseWheel,
+  getMouseCellFromWheelEvent,
+  getMouseProtocol,
+  wheelEventToLineDelta,
+  wheelEventToSteps,
+} from "@/utils/terminal-mouse"
+
+const isTerminalAlternateScreen = (terminal: unknown): boolean => {
+  const t = terminal as {
+    isAlternateScreen?: unknown
+    buffer?: { active?: { type?: unknown } }
+  }
+
+  if (typeof t.isAlternateScreen === "function") {
+    try {
+      return !!(t.isAlternateScreen as () => boolean)()
+    } catch {
+      return false
+    }
+  }
+
+  if (typeof t.isAlternateScreen === "boolean") return t.isAlternateScreen
+
+  return t.buffer?.active?.type === "alternate"
+}
 
 export interface TerminalProps extends ComponentProps<"div"> {
   pty: LocalPTY
@@ -100,7 +126,10 @@ export const Terminal = (props: TerminalProps) => {
     const mod = await import("ghostty-web")
     ghostty = await mod.Ghostty.load()
 
-    const url = new URL(sdk.url + `/pty/${local.pty.id}/connect?directory=${encodeURIComponent(sdk.directory)}`)
+    const url = new URL(sdk.url)
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:"
+    url.pathname = url.pathname.replace(/\/?$/, "/") + `pty/${local.pty.id}/connect`
+    url.searchParams.set("directory", sdk.directory)
     if (window.__OPENCODE__?.serverPassword) {
       url.username = "opencode"
       url.password = window.__OPENCODE__?.serverPassword
@@ -167,6 +196,43 @@ export const Terminal = (props: TerminalProps) => {
       }
 
       return false
+    })
+
+    t.attachCustomWheelEventHandler((event) => {
+      if (!isTerminalAlternateScreen(t)) return false
+
+      const metrics = t.renderer?.getMetrics?.()
+      const lineHeight = typeof metrics?.height === "number" && metrics.height > 0 ? metrics.height : 20
+      const delta = wheelEventToLineDelta(event, { lineHeight, rows: t.rows })
+      if (!delta) return true
+
+      if (t.hasMouseTracking()) {
+        const socket = ws
+        if (socket?.readyState === WebSocket.OPEN) {
+          const { col, row } = getMouseCellFromWheelEvent(t, event)
+          const protocol = getMouseProtocol((mode, isAnsi) => t.getMode(mode, isAnsi))
+          const direction = event.deltaY > 0 ? "down" : "up"
+          const steps = wheelEventToSteps(event, { lineHeight, rows: t.rows })
+          for (let i = 0; i < steps; i++) {
+            socket.send(
+              encodeXtermMouseWheel({
+                protocol,
+                direction,
+                col,
+                row,
+                shiftKey: event.shiftKey,
+                altKey: event.altKey,
+                ctrlKey: event.ctrlKey,
+                metaKey: event.metaKey,
+              }),
+            )
+          }
+          return true
+        }
+      }
+
+      t.scrollToLine(t.getViewportY() - delta)
+      return true
     })
 
     fitAddon = new mod.FitAddon()

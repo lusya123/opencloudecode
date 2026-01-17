@@ -2878,6 +2878,37 @@ export namespace Server {
             })
           },
         )
+        // CC Switch API 代理
+        .all("/cc-switch/*", async (c) => {
+          const ccSwitchPort = process.env.CC_SWITCH_PORT || "8766"
+          const targetPath = c.req.path.replace("/cc-switch", "/api")
+          const targetUrl = `http://127.0.0.1:${ccSwitchPort}${targetPath}`
+
+          try {
+            const response = await fetch(targetUrl, {
+              method: c.req.method,
+              headers: c.req.raw.headers,
+              body: c.req.method !== "GET" && c.req.method !== "HEAD" ? await c.req.raw.text() : undefined,
+            })
+
+            const data = await response.text()
+            return new Response(data, {
+              status: response.status,
+              headers: {
+                "Content-Type": response.headers.get("Content-Type") || "application/json",
+              },
+            })
+          } catch (error) {
+            log.error("CC Switch proxy error", { error })
+            return c.json(
+              {
+                success: false,
+                error: "CC Switch service unavailable",
+              },
+              503,
+            )
+          }
+        })
         .all("/*", async (c) => {
           const path = c.req.path
           const response = await proxy(`https://app.opencode.ai${path}`, {

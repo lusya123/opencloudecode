@@ -26,6 +26,13 @@ pub fn get_app_config_dir_override() -> Option<PathBuf> {
     override_cache().read().ok()?.clone()
 }
 
+/// 仅在当前进程内设置 app_config_dir 覆盖路径（不写入 Store）
+///
+/// 用于 `cc-switch-server` 等非 Tauri 场景，避免影响 GUI App 的配置目录。
+pub fn set_app_config_dir_override_for_process(path: Option<PathBuf>) {
+    update_cached_override(path);
+}
+
 fn read_override_from_store(app: &tauri::AppHandle) -> Option<PathBuf> {
     let store = match app.store_builder("app_paths.json").build() {
         Ok(store) => store,
