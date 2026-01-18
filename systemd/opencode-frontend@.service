@@ -1,0 +1,16 @@
+[Unit]
+Description=OpenCode Frontend Service
+After=network.target opencode-backend@%i.service
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/opt/opencode/opencode-dev/packages/app
+ExecStart=/home/%i/.bun/bin/bun run dev
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/opencode/frontend.log
+StandardError=append:/var/log/opencode/frontend.log
+
+[Install]
+WantedBy=multi-user.target
