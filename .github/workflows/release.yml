@@ -26,9 +26,11 @@ jobs:
           - os: macos-latest
             platform: darwin-arm64
             rust_target: aarch64-apple-darwin
-          - os: macos-15-large
+          # darwin-x64 通过交叉编译在 darwin-arm64 上构建
+          - os: macos-latest
             platform: darwin-x64
             rust_target: x86_64-apple-darwin
+            cross_compile: true
 
     runs-on: ${{ matrix.os }}
 
@@ -42,7 +44,9 @@ jobs:
           bun-version: latest
 
       - name: Setup Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
 
       - name: Install dependencies
         run: |
@@ -59,12 +63,23 @@ jobs:
       - name: Build opencode binary
         run: |
           cd opencode-dev/packages/opencode
-          bun build --compile --outfile=opencode ./src/index.ts --conditions=browser || echo "Binary build failed, will use source mode"
+          if [ "${{ matrix.cross_compile }}" = "true" ]; then
+            bun build --compile --target=bun-${{ matrix.platform }} --outfile=opencode ./src/index.ts --conditions=browser || echo "Binary build failed"
+          else
+            bun build --compile --outfile=opencode ./src/index.ts --conditions=browser || echo "Binary build failed"
+          fi
 
       - name: Build cc-switch-server
         run: |
           cd cc-switch-main/src-tauri
-          cargo build --release --bin cc-switch-server
+          if [ "${{ matrix.cross_compile }}" = "true" ]; then
+            rustup target add ${{ matrix.rust_target }}
+            cargo build --release --bin cc-switch-server --target=${{ matrix.rust_target }}
+            mkdir -p ../target/release
+            cp target/${{ matrix.rust_target }}/release/cc-switch-server ../target/release/ || true
+          else
+            cargo build --release --bin cc-switch-server
+          fi
 
       - name: Package release
         run: |
