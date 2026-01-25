@@ -14,6 +14,7 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -25,7 +26,7 @@ jobs:
           - os: macos-latest
             platform: darwin-arm64
             rust_target: aarch64-apple-darwin
-          - os: macos-13
+          - os: macos-15-large
             platform: darwin-x64
             rust_target: x86_64-apple-darwin
 
