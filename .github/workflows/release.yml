@@ -11,6 +11,9 @@ on:
         required: true
         default: 'v1.0.1'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
