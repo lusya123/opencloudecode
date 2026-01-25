@@ -1,0 +1,182 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.1)'
+        required: true
+        default: 'v1.0.1'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x64
+            rust_target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            platform: linux-arm64
+            rust_target: aarch64-unknown-linux-gnu
+          - os: macos-latest
+            platform: darwin-arm64
+            rust_target: aarch64-apple-darwin
+          - os: macos-13
+            platform: darwin-x64
+            rust_target: x86_64-apple-darwin
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Install dependencies
+        run: |
+          cd opencode-dev/packages/opencode
+          bun install
+          cd ../../../opencode-pro
+          bun install
+
+      - name: Build frontend
+        run: |
+          cd opencode-pro
+          bun run build
+
+      - name: Build opencode binary
+        run: |
+          cd opencode-dev/packages/opencode
+          bun build --compile --outfile=opencode ./src/index.ts --conditions=browser || echo "Binary build failed, will use source mode"
+
+      - name: Build cc-switch-server
+        run: |
+          cd cc-switch-main/src-tauri
+          cargo build --release --bin cc-switch-server
+
+      - name: Package release
+        run: |
+          mkdir -p release/opencode/bin
+          mkdir -p release/opencode/web
+          mkdir -p release/opencode/systemd
+          mkdir -p release/opencode/backend
+
+          # Copy frontend
+          cp -a opencode-pro/packages/app/dist/* release/opencode/web/
+
+          # Copy binaries
+          if [ -f opencode-dev/packages/opencode/opencode ]; then
+            cp opencode-dev/packages/opencode/opencode release/opencode/bin/
+          fi
+          cp cc-switch-main/src-tauri/target/release/cc-switch-server release/opencode/bin/ || true
+
+          # Copy backend source as fallback
+          cp -a opencode-dev/packages/opencode/src release/opencode/backend/
+          cp opencode-dev/packages/opencode/package.json release/opencode/backend/
+
+          # Copy config files
+          cp .env.example release/opencode/ || echo "OPENCODE_SERVER_PASSWORD=" > release/opencode/.env.example
+          cp packaging/systemd/opencode.service release/opencode/systemd/ || true
+
+          # Create start script
+          cat > release/opencode/start.sh << 'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          if [[ -x "${SCRIPT_DIR}/bin/opencode" ]]; then
+            export OPENCODE_WEB_ROOT="${SCRIPT_DIR}/web"
+            export CC_SWITCH_SERVER_PATH="${SCRIPT_DIR}/bin/cc-switch-server"
+            exec "${SCRIPT_DIR}/bin/opencode" serve --mode prod --hostname 0.0.0.0 --port 4096
+          else
+            if ! command -v bun >/dev/null 2>&1; then
+              curl -fsSL https://bun.sh/install | bash
+              export PATH="${HOME}/.bun/bin:${PATH}"
+            fi
+            cd "${SCRIPT_DIR}/backend" && bun install
+            export OPENCODE_WEB_ROOT="${SCRIPT_DIR}/web"
+            export CC_SWITCH_SERVER_PATH="${SCRIPT_DIR}/bin/cc-switch-server"
+            exec bun run --conditions=browser src/index.ts serve --mode prod --hostname 0.0.0.0 --port 4096
+          fi
+          EOF
+          chmod +x release/opencode/start.sh
+
+          # Create install script
+          cat > release/opencode/install.sh << 'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          [[ "${EUID:-$(id -u)}" -ne 0 ]] && echo "需要 root 权限" && exit 1
+          SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          DST="/opt/opencode"
+          mkdir -p "$DST" && cp -a "$SRC/"* "$DST/"
+          [[ ! -f "$DST/.env" ]] && cp "$DST/.env.example" "$DST/.env" && chmod 600 "$DST/.env"
+          chmod +x "$DST/start.sh" "$DST/bin/"* 2>/dev/null || true
+          if command -v systemctl >/dev/null 2>&1; then
+            cp "$DST/systemd/opencode.service" /etc/systemd/system/
+            systemctl daemon-reload && systemctl enable --now opencode
+          fi
+          echo "安装完成！访问 http://localhost:4096"
+          EOF
+          chmod +x release/opencode/install.sh
+
+          # Create tarball
+          cd release
+          tar -czf opencode-selfhost_${{ matrix.platform }}.tar.gz opencode
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-selfhost_${{ matrix.platform }}
+          path: release/opencode-selfhost_${{ matrix.platform }}.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          find . -name "*.tar.gz" -exec mv {} . \;
+          sha256sum *.tar.gz > SHA256SUMS
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*.tar.gz
+            artifacts/SHA256SUMS
+          body: |
+            ## 一键安装
+
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh | bash
+            ```
+
+            ## 支持的平台
+
+            - macOS Apple Silicon (darwin-arm64)
+            - macOS Intel (darwin-x64)
+            - Linux x64 (linux-x64)
+            - Linux ARM64 (linux-arm64)
+
+            ## 访问地址
+
+            - Web: http://localhost:4096
+            - API: http://localhost:4096/api
