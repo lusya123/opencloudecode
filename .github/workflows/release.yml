@@ -75,14 +75,20 @@ jobs:
           cd opencode-dev/packages/opencode
           # Generate inlined theme data to work around Bun compile JSON import issue
           bun run scripts/inline-json.ts
-          # Build the binary
-          if [ "${{ matrix.cross_compile }}" = "true" ]; then
-            bun build --compile --target=bun-${{ matrix.platform }} --outfile=opencode ./src/index.ts --conditions=browser || echo "Binary build failed"
+          # Use the existing build script which properly handles JSX transformation
+          # --single builds only for the current platform
+          bun run build --single --skip-install
+          # Find and copy the binary to the expected location
+          BINARY_PATH=$(find dist -name "opencode" -type f 2>/dev/null | head -1)
+          if [ -n "$BINARY_PATH" ]; then
+            cp "$BINARY_PATH" ./opencode
+            chmod +x ./opencode
+            echo "Binary found at: $BINARY_PATH"
+            ls -la opencode
           else
-            bun build --compile --outfile=opencode ./src/index.ts --conditions=browser || echo "Binary build failed"
+            echo "Binary not found in dist/"
+            find dist -type f 2>/dev/null || echo "dist/ directory empty or not found"
           fi
-          # Check if binary was created
-          ls -la opencode 2>/dev/null || echo "Binary not found"
 
       - name: Build cc-switch-server
         continue-on-error: true
