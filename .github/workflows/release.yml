@@ -59,9 +59,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd opencode-dev/packages/opencode
+          # Install monorepo dependencies first
+          cd opencode-dev
           bun install
-          cd ../../../opencode-pro
+          cd ../opencode-pro
           bun install
 
       - name: Build frontend
@@ -72,11 +73,16 @@ jobs:
       - name: Build opencode binary
         run: |
           cd opencode-dev/packages/opencode
+          # List theme files to verify they exist
+          ls -la src/cli/cmd/tui/context/theme/ | head -10
+          # Try building with explicit loader
           if [ "${{ matrix.cross_compile }}" = "true" ]; then
             bun build --compile --target=bun-${{ matrix.platform }} --outfile=opencode ./src/index.ts --conditions=browser || echo "Binary build failed"
           else
             bun build --compile --outfile=opencode ./src/index.ts --conditions=browser || echo "Binary build failed"
           fi
+          # Check if binary was created
+          ls -la opencode 2>/dev/null || echo "Binary not found"
 
       - name: Build cc-switch-server
         continue-on-error: true
