@@ -95,6 +95,9 @@ download_and_extract() {
   cp -a "${extracted_dir}/web" "${INSTALL_DIR}/" 2>/dev/null || true
   cp -a "${extracted_dir}/.env.example" "${INSTALL_DIR}/" 2>/dev/null || true
   cp -a "${extracted_dir}/systemd" "${INSTALL_DIR}/" 2>/dev/null || true
+  cp -a "${extracted_dir}/backend" "${INSTALL_DIR}/" 2>/dev/null || true
+  cp -a "${extracted_dir}/start.sh" "${INSTALL_DIR}/" 2>/dev/null || true
+  cp -a "${extracted_dir}/install.sh" "${INSTALL_DIR}/pkg-install.sh" 2>/dev/null || true
 
   if [[ ! -f "${INSTALL_DIR}/.env" && -f "${INSTALL_DIR}/.env.example" ]]; then
     cp "${INSTALL_DIR}/.env.example" "${INSTALL_DIR}/.env"
@@ -153,7 +156,7 @@ print_success() {
     echo "服务状态: systemctl status opencode"
     echo "查看日志: journalctl -u opencode -f"
   else
-    echo "启动服务: ${INSTALL_DIR}/bin/opencode serve"
+    echo "启动服务: ${INSTALL_DIR}/start.sh"
   fi
 
   echo ""
