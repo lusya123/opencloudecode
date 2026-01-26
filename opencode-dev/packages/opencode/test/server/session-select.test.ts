@@ -18,7 +18,7 @@ describe("tui.selectSession endpoint", () => {
 
         // #when
         const app = Server.App()
-        const response = await app.request("/tui/select-session", {
+        const response = await app.request("/api/tui/select-session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionID: session.id }),
@@ -43,7 +43,7 @@ describe("tui.selectSession endpoint", () => {
 
         // #when
         const app = Server.App()
-        const response = await app.request("/tui/select-session", {
+        const response = await app.request("/api/tui/select-session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionID: nonExistentSessionID }),
@@ -64,7 +64,7 @@ describe("tui.selectSession endpoint", () => {
 
         // #when
         const app = Server.App()
-        const response = await app.request("/tui/select-session", {
+        const response = await app.request("/api/tui/select-session", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionID: invalidSessionID }),

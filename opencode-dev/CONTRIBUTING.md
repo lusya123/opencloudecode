@@ -128,7 +128,7 @@ Caveats:
   the usual `bun dev`. This is because `bun dev` runs the server in a worker thread and breakpoints might not work there.
 - If `spawn` does not work for you, you can debug the server separately:
   - Debug server: `bun run --inspect=ws://localhost:6499/ ./src/index.ts serve --port 4096`,
-    then attach TUI with `opencode attach http://localhost:4096`
+    then attach TUI with `opencode attach http://localhost:4096/api`
   - Debug TUI: `bun run --inspect=ws://localhost:6499/ --conditions=browser ./src/index.ts`
 
 Other tips and tricks:

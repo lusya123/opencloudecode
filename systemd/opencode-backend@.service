@@ -1,16 +1,21 @@
 [Unit]
-Description=OpenCode Backend Service
+Description=OpenCode (Web + API) Service
 After=network.target
 
 [Service]
 Type=simple
 User=%i
+EnvironmentFile=-/opt/opencode/.env
+Environment=OPENCODE_WEB_ROOT=/opt/opencode/opencode-pro/packages/app/dist
+Environment=CC_SWITCH_SERVER_PATH=/opt/opencode/cc-switch-main/src-tauri/target/release/cc-switch-server
+Environment=CC_SWITCH_PORT=8766
+Environment=PATH=/home/%i/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 WorkingDirectory=/opt/opencode/opencode-dev/packages/opencode
-ExecStart=/home/%i/.bun/bin/bun run dev
+ExecStart=bun run --conditions=browser src/index.ts serve --mode prod --hostname 0.0.0.0 --port 4096
 Restart=always
 RestartSec=10
-StandardOutput=append:/var/log/opencode/backend.log
-StandardError=append:/var/log/opencode/backend.log
+StandardOutput=append:/var/log/opencode/opencode.log
+StandardError=append:/var/log/opencode/opencode.log
 
 [Install]
 WantedBy=multi-user.target

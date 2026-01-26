@@ -177,7 +177,7 @@ export function DialogSelectServer() {
                   type="text"
                   label="Server URL"
                   hideLabel
-                  placeholder="http://localhost:4096"
+                  placeholder="http://localhost:4096/api"
                   value={store.url}
                   onChange={(v) => {
                     setStore("url", v)

@@ -68,11 +68,11 @@ function ServerKey(props: ParentProps) {
 export function AppInterface(props: { defaultUrl?: string }) {
   const defaultServerUrl = () => {
     if (props.defaultUrl) return props.defaultUrl
-    if (location.hostname.includes("opencode.ai")) return "http://localhost:4096"
+    if (location.hostname.includes("opencode.ai")) return "http://localhost:4096/api"
     if (import.meta.env.DEV)
-      return `http://${import.meta.env.VITE_OPENCODE_SERVER_HOST ?? "localhost"}:${import.meta.env.VITE_OPENCODE_SERVER_PORT ?? "4096"}`
+      return `http://${import.meta.env.VITE_OPENCODE_SERVER_HOST ?? location.hostname}:${import.meta.env.VITE_OPENCODE_SERVER_PORT ?? "4096"}/api`
 
-    return window.location.origin
+    return `${window.location.origin}/api`
   }
 
   return (

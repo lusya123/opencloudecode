@@ -75,7 +75,7 @@ If you already have a running instance of opencode, you can create a client inst
 import { createOpencodeClient } from "@opencode-ai/sdk"
 
 const client = createOpencodeClient({
-  baseUrl: "http://localhost:4096",
+  baseUrl: "http://localhost:4096/api",
 })
 ```
 
@@ -83,7 +83,7 @@ const client = createOpencodeClient({
 
 | Option          | Type       | Description                      | Default                 |
 | --------------- | ---------- | -------------------------------- | ----------------------- |
-| `baseUrl`       | `string`   | URL of the server                | `http://localhost:4096` |
+| `baseUrl`       | `string`   | URL of the server                | `http://localhost:4096/api` |
 | `fetch`         | `function` | Custom fetch implementation      | `globalThis.fetch`      |
 | `parseAs`       | `string`   | Response parsing method          | `auto`                  |
 | `responseStyle` | `string`   | Return style: `data` or `fields` | `fields`                |

@@ -73,9 +73,9 @@ jobs:
       - name: Build opencode binary
         run: |
           cd opencode-dev/packages/opencode
-          # List theme files to verify they exist
-          ls -la src/cli/cmd/tui/context/theme/ | head -10
-          # Try building with explicit loader
+          # Generate inlined theme data to work around Bun compile JSON import issue
+          bun run scripts/inline-json.ts
+          # Build the binary
           if [ "${{ matrix.cross_compile }}" = "true" ]; then
             bun build --compile --target=bun-${{ matrix.platform }} --outfile=opencode ./src/index.ts --conditions=browser || echo "Binary build failed"
           else

@@ -11,7 +11,15 @@ export function normalizeServerUrl(input: string) {
   const trimmed = input.trim()
   if (!trimmed) return
   const withProtocol = /^https?:\/\//.test(trimmed) ? trimmed : `http://${trimmed}`
-  return withProtocol.replace(/\/+$/, "")
+  const normalized = withProtocol.replace(/\/+$/, "")
+  try {
+    const url = new URL(normalized)
+    const path = url.pathname.replace(/\/+$/, "")
+    if (!path || path === "/") url.pathname = "/api"
+    return url.toString().replace(/\/+$/, "")
+  } catch {
+    return normalized
+  }
 }
 
 export function serverDisplayName(url: string) {

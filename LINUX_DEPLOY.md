@@ -19,14 +19,15 @@ cd opencode
 # 2. 赋予脚本执行权限
 chmod +x deploy-linux.sh start-services.sh stop-services.sh
 
-# 3. 运行部署脚本（自动安装依赖并构建）
-./deploy-linux.sh
+# 3. （可选）配置服务端鉴权（强烈推荐对外网开放时配置）
+cp .env.example .env
+nano .env  # 设置 OPENCODE_SERVER_PASSWORD
 
-# 4. 启动服务
-./start-services.sh
+# 4. 运行部署脚本（自动安装 Bun + Rust、安装依赖、构建前端、构建 cc-switch-server，并启动服务）
+./deploy-linux.sh prod
 ```
 
-访问 http://localhost:5173 使用 Web 界面
+访问 http://localhost:4096 使用 Web 界面（API 前缀为 `/api`）
 
 ### 方式二：系统服务方式（开机自启）
 
@@ -34,37 +35,34 @@ chmod +x deploy-linux.sh start-services.sh stop-services.sh
 # 1. 将项目移动到系统目录
 sudo mkdir -p /opt/opencode
 sudo cp -r . /opt/opencode/
+sudo chown -R USERNAME:USERNAME /opt/opencode
 cd /opt/opencode
 
-# 2. 运行部署脚本
-sudo chmod +x deploy-linux.sh
-sudo ./deploy-linux.sh
+# 2. （可选）配置服务端鉴权（强烈推荐对外网开放时配置）
+sudo -u USERNAME bash -lc "cd /opt/opencode && cp -n .env.example .env && nano .env"
 
-# 3. 安装 systemd 服务
+# 3. 运行部署脚本（首次会安装依赖并构建）
+sudo -u USERNAME bash -lc "cd /opt/opencode && chmod +x deploy-linux.sh start-services.sh stop-services.sh && ./deploy-linux.sh prod"
+
+# 4. 安装 systemd 服务
 sudo cp systemd/*.service /etc/systemd/system/
 sudo mkdir -p /var/log/opencode
 sudo systemctl daemon-reload
 
-# 4. 启动服务（将 USERNAME 替换为实际用户名）
+# 5. 启动服务（将 USERNAME 替换为实际用户名）
 sudo systemctl enable opencode-backend@USERNAME
-sudo systemctl enable opencode-frontend@USERNAME
-sudo systemctl enable cc-switch@USERNAME
-
 sudo systemctl start opencode-backend@USERNAME
-sudo systemctl start opencode-frontend@USERNAME
-sudo systemctl start cc-switch@USERNAME
 
-# 5. 查看服务状态
+# 6. 查看服务状态
 sudo systemctl status opencode-backend@USERNAME
-sudo systemctl status opencode-frontend@USERNAME
-sudo systemctl status cc-switch@USERNAME
 ```
 
 ## 服务端口
 
-- **前端 Web 界面**: http://localhost:5173
-- **后端 API**: http://localhost:3000
-- **CC-Switch 服务**: http://localhost:8080
+- **Web 界面**: http://localhost:4096
+- **后端 API**: http://localhost:4096/api
+- **CC-Switch 服务（后端内置代理）**: http://localhost:4096/api/cc-switch/*
+- **CC-Switch Server（内部端口，默认不需要对外开放）**: http://127.0.0.1:8766/api
 
 ## 管理命令
 
@@ -78,9 +76,7 @@ sudo systemctl status cc-switch@USERNAME
 ./stop-services.sh
 
 # 查看日志
-tail -f logs/backend.log
-tail -f logs/frontend.log
-tail -f logs/cc-switch.log
+tail -f logs/opencode.log
 ```
 
 ### systemd 服务管理
@@ -88,59 +84,50 @@ tail -f logs/cc-switch.log
 ```bash
 # 启动服务
 sudo systemctl start opencode-backend@USERNAME
-sudo systemctl start opencode-frontend@USERNAME
-sudo systemctl start cc-switch@USERNAME
 
 # 停止服务
 sudo systemctl stop opencode-backend@USERNAME
-sudo systemctl stop opencode-frontend@USERNAME
-sudo systemctl stop cc-switch@USERNAME
 
 # 重启服务
 sudo systemctl restart opencode-backend@USERNAME
 
 # 查看日志
 sudo journalctl -u opencode-backend@USERNAME -f
-sudo tail -f /var/log/opencode/backend.log
+sudo tail -f /var/log/opencode/opencode.log
 ```
 
 ## 远程访问配置
 
-如果需要从其他机器访问，需要修改绑定地址：
+默认已监听 `0.0.0.0:4096`。如需修改可使用环境变量：
 
-### 修改前端配置
-
-编辑 [opencode-dev/packages/app/vite.config.ts](opencode-dev/packages/app/vite.config.ts)：
-
-```typescript
-export default defineConfig({
-  server: {
-    host: '0.0.0.0',  // 允许外部访问
-    port: 5173
-  }
-})
-```
+- `OPENCODE_HOST=0.0.0.0`
+- `OPENCODE_PORT=4096`
 
 ### 配置防火墙
 
 ```bash
 # Ubuntu/Debian
-sudo ufw allow 5173/tcp
-sudo ufw allow 3000/tcp
-sudo ufw allow 8080/tcp
+sudo ufw allow 4096/tcp
 
 # CentOS/RHEL
-sudo firewall-cmd --permanent --add-port=5173/tcp
-sudo firewall-cmd --permanent --add-port=3000/tcp
-sudo firewall-cmd --permanent --add-port=8080/tcp
+sudo firewall-cmd --permanent --add-port=4096/tcp
 sudo firewall-cmd --reload
 ```
 
-访问地址变为: http://服务器IP:5173
+访问地址变为: http://服务器IP:4096
 
 ## 生产环境建议
 
-### 使用 Nginx 反向代理
+### 安全建议（强烈推荐）
+
+对外网开放时务必设置服务端鉴权：
+
+```bash
+export OPENCODE_SERVER_PASSWORD="your-strong-password"
+export OPENCODE_SERVER_USERNAME="opencode" # 可选
+```
+
+### 使用 Nginx 反向代理（可选）
 
 ```bash
 # 安装 Nginx
@@ -159,18 +146,7 @@ server {
     server_name your-domain.com;
 
     location / {
-        proxy_pass http://localhost:5173;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-
-    location /api {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_pass http://localhost:4096;
     }
 }
 ```
@@ -203,16 +179,14 @@ rustc --version
 ### 检查端口占用
 
 ```bash
-sudo netstat -tlnp | grep -E '5173|3000|8080'
+sudo netstat -tlnp | grep -E '4096|8766'
 ```
 
 ### 查看详细日志
 
 ```bash
 # 手动启动模式
-cat logs/backend.log
-cat logs/frontend.log
-cat logs/cc-switch.log
+cat logs/opencode.log
 
 # systemd 模式
 sudo journalctl -u opencode-backend@USERNAME --no-pager
@@ -241,17 +215,12 @@ cargo build --release
 ```bash
 # 停止服务
 sudo systemctl stop opencode-backend@USERNAME
-sudo systemctl stop opencode-frontend@USERNAME
-sudo systemctl stop cc-switch@USERNAME
 
 # 禁用自启动
 sudo systemctl disable opencode-backend@USERNAME
-sudo systemctl disable opencode-frontend@USERNAME
-sudo systemctl disable cc-switch@USERNAME
 
 # 删除服务文件
-sudo rm /etc/systemd/system/opencode-*.service
-sudo rm /etc/systemd/system/cc-switch@.service
+sudo rm /etc/systemd/system/opencode-backend@.service
 sudo systemctl daemon-reload
 
 # 删除项目文件

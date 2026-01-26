@@ -1,0 +1,8 @@
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+Warning: OPENCODE_SERVER_PASSWORD is not set; server is unsecured.
+[CC Switch] Starting server on port 8766...
+opencode server listening on http://0.0.0.0:4096/api
+[CC Switch Server] Version: 3.9.1
+[CC Switch Server] Initializing database...
+[CC Switch Server] Database initialized successfully
+[CC Switch Server] Starting on http://127.0.0.1:8766

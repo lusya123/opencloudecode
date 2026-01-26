@@ -1,0 +1,18 @@
+[Unit]
+Description=OpenCode Self-Hosted (Web + API)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/opencode
+EnvironmentFile=-/opt/opencode/.env
+Environment=OPENCODE_WEB_ROOT=/opt/opencode/web
+Environment=CC_SWITCH_SERVER_PATH=/opt/opencode/bin/cc-switch-server
+Environment=CC_SWITCH_PORT=8766
+ExecStart=/opt/opencode/bin/opencode serve --mode prod --hostname 0.0.0.0 --port 4096
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+
