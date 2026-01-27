@@ -22,16 +22,20 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux-x64
-            rust_target: x86_64-unknown-linux-gnu
+            bun_target: bun-linux-x64-musl
+            rust_target: x86_64-unknown-linux-musl
           - os: ubuntu-24.04-arm
             platform: linux-arm64
-            rust_target: aarch64-unknown-linux-gnu
+            bun_target: bun-linux-arm64-musl
+            rust_target: aarch64-unknown-linux-musl
           - os: macos-latest
             platform: darwin-arm64
+            bun_target: bun-darwin-arm64
             rust_target: aarch64-apple-darwin
           # darwin-x64 通过交叉编译在 darwin-arm64 上构建
           - os: macos-latest
             platform: darwin-x64
+            bun_target: bun-darwin-x64
             rust_target: x86_64-apple-darwin
             cross_compile: true
 
@@ -55,7 +59,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libglib2.0-dev
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libglib2.0-dev musl-tools
 
       - name: Install dependencies
         run: |
@@ -72,24 +76,25 @@ jobs:
       - name: Build opencode binary
         run: |
           cd opencode-dev/packages/opencode
-          if [ "${{ matrix.cross_compile }}" = "true" ]; then
-            bun build --compile --target=bun-${{ matrix.platform }} --outfile=opencode ./src/index.ts --conditions=browser || echo "Binary build failed"
-          else
-            bun build --compile --outfile=opencode ./src/index.ts --conditions=browser || echo "Binary build failed"
-          fi
+          bun build --compile --target=${{ matrix.bun_target }} --outfile=opencode ./src/index.ts --conditions=browser || echo "Binary build failed"
 
       - name: Build cc-switch-server
         continue-on-error: true
         run: |
           cd cc-switch-main/src-tauri
-          if [ "${{ matrix.cross_compile }}" = "true" ]; then
-            rustup target add ${{ matrix.rust_target }}
-            cargo build --release --bin cc-switch-server --target=${{ matrix.rust_target }} || echo "cc-switch build failed"
-            mkdir -p ../target/release
-            cp target/${{ matrix.rust_target }}/release/cc-switch-server ../target/release/ || true
-          else
-            cargo build --release --bin cc-switch-server || echo "cc-switch build failed"
+          rustup target add ${{ matrix.rust_target }}
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            # For musl targets on Linux, we need to set the linker
+            if [[ "${{ matrix.rust_target }}" == *"musl"* ]]; then
+              export CC_x86_64_unknown_linux_musl=musl-gcc
+              export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
+              export CC_aarch64_unknown_linux_musl=musl-gcc
+              export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
+            fi
           fi
+          cargo build --release --bin cc-switch-server --target=${{ matrix.rust_target }} || echo "cc-switch build failed"
+          mkdir -p ../target/release
+          cp target/${{ matrix.rust_target }}/release/cc-switch-server ../target/release/ || true
 
       - name: Package release
         run: |

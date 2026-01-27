@@ -114,50 +114,33 @@ install_dependencies() {
     return
   fi
 
-  # 获取 ldd 输出
-  local ldd_output
-  ldd_output="$(ldd "${INSTALL_DIR}/bin/opencode" 2>&1)"
+  # 验证二进制文件是否可以运行
+  if ! "${INSTALL_DIR}/bin/opencode" --version >/dev/null 2>&1; then
+    # 获取 ldd 输出查看缺失的库
+    local ldd_output
+    ldd_output="$(ldd "${INSTALL_DIR}/bin/opencode" 2>&1 || true)"
 
-  # 检查是否需要 musl（检查是否有 musl 相关的 "not found"）
-  if echo "${ldd_output}" | grep -q "musl" && echo "${ldd_output}" | grep -q "not found"; then
-    info "检测到需要 musl 库..."
+    if echo "${ldd_output}" | grep -q "not found"; then
+      warn "检测到缺少依赖库"
+      warn "请查看: ldd ${INSTALL_DIR}/bin/opencode"
 
-    if [[ "${OS}" == "linux" ]]; then
-      # 检测 Linux 发行版
-      if command -v apt-get >/dev/null 2>&1; then
-        # Debian/Ubuntu
-        info "安装 musl 依赖 (Debian/Ubuntu)..."
-        if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
-          apt-get update -qq && apt-get install -y -qq musl >/dev/null 2>&1 || warn "musl 安装失败，服务可能无法启动"
-        else
-          warn "需要 root 权限安装 musl。请运行: sudo apt-get install -y musl"
+      # 尝试安装常见的缺失依赖
+      if [[ "${OS}" == "linux" ]]; then
+        if command -v apt-get >/dev/null 2>&1; then
+          info "尝试安装缺失的依赖 (Debian/Ubuntu)..."
+          if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+            apt-get update -qq
+            # 安装常见的运行时依赖
+            apt-get install -y -qq libstdc++6 libgcc-s1 2>/dev/null || true
+          fi
+        elif command -v yum >/dev/null 2>&1; then
+          info "尝试安装缺失的依赖 (CentOS/RHEL)..."
+          if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+            yum install -y libstdc++ libgcc 2>/dev/null || true
+          fi
         fi
-      elif command -v yum >/dev/null 2>&1; then
-        # CentOS/RHEL
-        info "安装 musl 依赖 (CentOS/RHEL)..."
-        if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
-          yum install -y musl >/dev/null 2>&1 || warn "musl 安装失败，服务可能无法启动"
-        else
-          warn "需要 root 权限安装 musl。请运行: sudo yum install -y musl"
-        fi
-      elif command -v apk >/dev/null 2>&1; then
-        # Alpine
-        info "安装 musl 依赖 (Alpine)..."
-        if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
-          apk add --no-cache musl >/dev/null 2>&1 || warn "musl 安装失败，服务可能无法启动"
-        else
-          warn "需要 root 权限安装 musl。请运行: sudo apk add musl"
-        fi
-      else
-        warn "无法识别的 Linux 发行版，请手动安装 musl"
       fi
     fi
-  fi
-
-  # 验证依赖是否满足
-  if ldd "${INSTALL_DIR}/bin/opencode" 2>&1 | grep -q "not found"; then
-    warn "检测到缺少依赖库，服务可能无法启动"
-    warn "请查看: ldd ${INSTALL_DIR}/bin/opencode"
   fi
 }
 
