@@ -114,8 +114,12 @@ install_dependencies() {
     return
   fi
 
-  # 检查是否需要 musl
-  if ldd "${INSTALL_DIR}/bin/opencode" 2>&1 | grep -q "musl.*not found"; then
+  # 获取 ldd 输出
+  local ldd_output
+  ldd_output="$(ldd "${INSTALL_DIR}/bin/opencode" 2>&1)"
+
+  # 检查是否需要 musl（检查是否有 musl 相关的 "not found"）
+  if echo "${ldd_output}" | grep -q "musl" && echo "${ldd_output}" | grep -q "not found"; then
     info "检测到需要 musl 库..."
 
     if [[ "${OS}" == "linux" ]]; then
