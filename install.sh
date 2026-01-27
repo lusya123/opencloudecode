@@ -107,6 +107,56 @@ download_and_extract() {
   chmod +x "${INSTALL_DIR}/bin/"* 2>/dev/null || true
 }
 
+install_dependencies() {
+  # 检查二进制文件是否存在
+  if [[ ! -f "${INSTALL_DIR}/bin/opencode" ]]; then
+    info "未找到二进制文件，跳过依赖检查"
+    return
+  fi
+
+  # 检查是否需要 musl
+  if ldd "${INSTALL_DIR}/bin/opencode" 2>&1 | grep -q "musl.*not found"; then
+    info "检测到需要 musl 库..."
+
+    if [[ "${OS}" == "linux" ]]; then
+      # 检测 Linux 发行版
+      if command -v apt-get >/dev/null 2>&1; then
+        # Debian/Ubuntu
+        info "安装 musl 依赖 (Debian/Ubuntu)..."
+        if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+          apt-get update -qq && apt-get install -y -qq musl >/dev/null 2>&1 || warn "musl 安装失败，服务可能无法启动"
+        else
+          warn "需要 root 权限安装 musl。请运行: sudo apt-get install -y musl"
+        fi
+      elif command -v yum >/dev/null 2>&1; then
+        # CentOS/RHEL
+        info "安装 musl 依赖 (CentOS/RHEL)..."
+        if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+          yum install -y musl >/dev/null 2>&1 || warn "musl 安装失败，服务可能无法启动"
+        else
+          warn "需要 root 权限安装 musl。请运行: sudo yum install -y musl"
+        fi
+      elif command -v apk >/dev/null 2>&1; then
+        # Alpine
+        info "安装 musl 依赖 (Alpine)..."
+        if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+          apk add --no-cache musl >/dev/null 2>&1 || warn "musl 安装失败，服务可能无法启动"
+        else
+          warn "需要 root 权限安装 musl。请运行: sudo apk add musl"
+        fi
+      else
+        warn "无法识别的 Linux 发行版，请手动安装 musl"
+      fi
+    fi
+  fi
+
+  # 验证依赖是否满足
+  if ldd "${INSTALL_DIR}/bin/opencode" 2>&1 | grep -q "not found"; then
+    warn "检测到缺少依赖库，服务可能无法启动"
+    warn "请查看: ldd ${INSTALL_DIR}/bin/opencode"
+  fi
+}
+
 install_systemd() {
   if [[ "${NO_SYSTEMD}" == "1" ]]; then
     warn "跳过 systemd 安装"
@@ -143,6 +193,51 @@ install_systemd() {
   fi
 }
 
+start_service() {
+  # 如果是 root 用户且使用了 systemd，则已经启动了服务
+  if [[ "${OS}" == "linux" ]] && [[ "${EUID:-$(id -u)}" -eq 0 ]] && [[ "${NO_SYSTEMD}" != "1" ]]; then
+    return
+  fi
+
+  # 对于非 root 用户或非 Linux 系统，使用 nohup 后台启动
+  if [[ ! -x "${INSTALL_DIR}/start.sh" ]]; then
+    warn "启动脚本不存在或无执行权限"
+    return
+  fi
+
+  info "启动 OpenCode 服务..."
+
+  # 创建日志目录
+  mkdir -p "${INSTALL_DIR}/logs"
+
+  # 停止可能存在的旧进程
+  if [[ -f "${INSTALL_DIR}/opencode.pid" ]]; then
+    local old_pid
+    old_pid="$(cat "${INSTALL_DIR}/opencode.pid" 2>/dev/null || true)"
+    if [[ -n "${old_pid}" ]] && kill -0 "${old_pid}" 2>/dev/null; then
+      info "停止旧的服务进程 (PID: ${old_pid})..."
+      kill "${old_pid}" 2>/dev/null || true
+      sleep 2
+    fi
+  fi
+
+  # 后台启动服务
+  cd "${INSTALL_DIR}"
+  nohup "${INSTALL_DIR}/start.sh" > "${INSTALL_DIR}/logs/opencode.log" 2>&1 &
+  local pid=$!
+  echo "${pid}" > "${INSTALL_DIR}/opencode.pid"
+
+  # 等待服务启动
+  sleep 3
+
+  # 检查服务是否成功启动
+  if kill -0 "${pid}" 2>/dev/null; then
+    info "服务已启动 (PID: ${pid})"
+  else
+    warn "服务启动可能失败，请查看日志: ${INSTALL_DIR}/logs/opencode.log"
+  fi
+}
+
 print_success() {
   echo ""
   echo -e "${GREEN}========================================${NC}"
@@ -152,11 +247,15 @@ print_success() {
   echo "安装目录: ${INSTALL_DIR}"
   echo ""
 
-  if [[ "${OS}" == "linux" ]] && [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+  if [[ "${OS}" == "linux" ]] && [[ "${EUID:-$(id -u)}" -eq 0 ]] && [[ "${NO_SYSTEMD}" != "1" ]]; then
     echo "服务状态: systemctl status opencode"
     echo "查看日志: journalctl -u opencode -f"
+    echo "停止服务: systemctl stop opencode"
   else
-    echo "启动服务: ${INSTALL_DIR}/start.sh"
+    echo "服务状态: ps aux | grep opencode"
+    echo "查看日志: tail -f ${INSTALL_DIR}/logs/opencode.log"
+    echo "停止服务: kill \$(cat ${INSTALL_DIR}/opencode.pid)"
+    echo "重启服务: ${INSTALL_DIR}/start.sh"
   fi
 
   echo ""
@@ -181,7 +280,9 @@ main() {
   detect_install_dir
   get_download_url
   download_and_extract
+  install_dependencies
   install_systemd
+  start_service
   print_success
 }
 
