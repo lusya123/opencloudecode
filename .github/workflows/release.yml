@@ -22,20 +22,16 @@ jobs:
         include:
           - os: ubuntu-latest
             platform: linux-x64
-            bun_target: bun-linux-x64-musl
-            rust_target: x86_64-unknown-linux-musl
+            rust_target: x86_64-unknown-linux-gnu
           - os: ubuntu-24.04-arm
             platform: linux-arm64
-            bun_target: bun-linux-arm64-musl
-            rust_target: aarch64-unknown-linux-musl
+            rust_target: aarch64-unknown-linux-gnu
           - os: macos-latest
             platform: darwin-arm64
-            bun_target: bun-darwin-arm64
             rust_target: aarch64-apple-darwin
           # darwin-x64 通过交叉编译在 darwin-arm64 上构建
           - os: macos-latest
             platform: darwin-x64
-            bun_target: bun-darwin-x64
             rust_target: x86_64-apple-darwin
             cross_compile: true
 
@@ -59,7 +55,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libglib2.0-dev musl-tools
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libglib2.0-dev
 
       - name: Install dependencies
         run: |
@@ -76,25 +72,24 @@ jobs:
       - name: Build opencode binary
         run: |
           cd opencode-dev/packages/opencode
-          bun build --compile --target=${{ matrix.bun_target }} --outfile=opencode ./src/index.ts --conditions=browser || echo "Binary build failed"
+          if [ "${{ matrix.cross_compile }}" = "true" ]; then
+            bun build --compile --target=bun-${{ matrix.platform }} --outfile=opencode ./src/index.ts --conditions=browser || echo "Binary build failed"
+          else
+            bun build --compile --outfile=opencode ./src/index.ts --conditions=browser || echo "Binary build failed"
+          fi
 
       - name: Build cc-switch-server
         continue-on-error: true
         run: |
           cd cc-switch-main/src-tauri
-          rustup target add ${{ matrix.rust_target }}
-          if [[ "${{ runner.os }}" == "Linux" ]]; then
-            # For musl targets on Linux, we need to set the linker
-            if [[ "${{ matrix.rust_target }}" == *"musl"* ]]; then
-              export CC_x86_64_unknown_linux_musl=musl-gcc
-              export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
-              export CC_aarch64_unknown_linux_musl=musl-gcc
-              export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
-            fi
+          if [ "${{ matrix.cross_compile }}" = "true" ]; then
+            rustup target add ${{ matrix.rust_target }}
+            cargo build --release --bin cc-switch-server --target=${{ matrix.rust_target }} || echo "cc-switch build failed"
+            mkdir -p ../target/release
+            cp target/${{ matrix.rust_target }}/release/cc-switch-server ../target/release/ || true
+          else
+            cargo build --release --bin cc-switch-server || echo "cc-switch build failed"
           fi
-          cargo build --release --bin cc-switch-server --target=${{ matrix.rust_target }} || echo "cc-switch build failed"
-          mkdir -p ../target/release
-          cp target/${{ matrix.rust_target }}/release/cc-switch-server ../target/release/ || true
 
       - name: Package release
         run: |
@@ -118,28 +113,59 @@ jobs:
 
           # Copy config files
           cp .env.example release/opencode/ || echo "OPENCODE_SERVER_PASSWORD=" > release/opencode/.env.example
-          cp packaging/systemd/opencode.service release/opencode/systemd/ || true
 
-          # Create start script
+          # Create systemd service file that uses start.sh
+          cat > release/opencode/systemd/opencode.service << 'EOF'
+[Unit]
+Description=OpenCode Self-Hosted (Web + API)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/opencode
+ExecStart=/opt/opencode/start.sh
+Restart=on-failure
+RestartSec=5
+Environment=HOME=/root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+          # Create start script with fallback support
           cat > release/opencode/start.sh << 'EOF'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-          if [[ -x "${SCRIPT_DIR}/bin/opencode" ]]; then
-            export OPENCODE_WEB_ROOT="${SCRIPT_DIR}/web"
-            export CC_SWITCH_SERVER_PATH="${SCRIPT_DIR}/bin/cc-switch-server"
-            exec "${SCRIPT_DIR}/bin/opencode" serve --mode prod --hostname 0.0.0.0 --port 4096
-          else
-            if ! command -v bun >/dev/null 2>&1; then
-              curl -fsSL https://bun.sh/install | bash
-              export PATH="${HOME}/.bun/bin:${PATH}"
-            fi
-            cd "${SCRIPT_DIR}/backend" && bun install
-            export OPENCODE_WEB_ROOT="${SCRIPT_DIR}/web"
-            export CC_SWITCH_SERVER_PATH="${SCRIPT_DIR}/bin/cc-switch-server"
-            exec bun run --conditions=browser src/index.ts serve --mode prod --hostname 0.0.0.0 --port 4096
-          fi
-          EOF
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+run_with_bun() {
+  echo "[INFO] Using Bun to run OpenCode..."
+  if ! command -v bun >/dev/null 2>&1; then
+    echo "[INFO] Installing Bun..."
+    curl -fsSL https://bun.sh/install | bash
+    export PATH="${HOME}/.bun/bin:${PATH}"
+  fi
+  cd "${SCRIPT_DIR}/backend" && bun install --frozen-lockfile 2>/dev/null || bun install
+  export OPENCODE_WEB_ROOT="${SCRIPT_DIR}/web"
+  export CC_SWITCH_SERVER_PATH="${SCRIPT_DIR}/bin/cc-switch-server"
+  exec bun run --conditions=browser src/index.ts serve --mode prod --hostname 0.0.0.0 --port 4096
+}
+
+# Try binary first, fallback to Bun if it fails
+if [[ -x "${SCRIPT_DIR}/bin/opencode" ]]; then
+  # Test if binary can run
+  if "${SCRIPT_DIR}/bin/opencode" --version >/dev/null 2>&1; then
+    export OPENCODE_WEB_ROOT="${SCRIPT_DIR}/web"
+    export CC_SWITCH_SERVER_PATH="${SCRIPT_DIR}/bin/cc-switch-server"
+    exec "${SCRIPT_DIR}/bin/opencode" serve --mode prod --hostname 0.0.0.0 --port 4096
+  else
+    echo "[WARN] Binary exists but cannot run, falling back to Bun..."
+    run_with_bun
+  fi
+else
+  run_with_bun
+fi
+EOF
           chmod +x release/opencode/start.sh
 
           # Create install script
