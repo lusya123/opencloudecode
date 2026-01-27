@@ -149,22 +149,8 @@ jobs:
           EOF
           chmod +x release/opencode/start.sh
 
-          # Create install script
-          cat > release/opencode/install.sh << 'EOF'
-          #!/usr/bin/env bash
-          set -euo pipefail
-          [[ "${EUID:-$(id -u)}" -ne 0 ]] && echo "需要 root 权限" && exit 1
-          SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-          DST="/opt/opencode"
-          mkdir -p "$DST" && cp -a "$SRC/"* "$DST/"
-          [[ ! -f "$DST/.env" ]] && cp "$DST/.env.example" "$DST/.env" && chmod 600 "$DST/.env"
-          chmod +x "$DST/start.sh" "$DST/bin/"* 2>/dev/null || true
-          if command -v systemctl >/dev/null 2>&1; then
-            cp "$DST/systemd/opencode.service" /etc/systemd/system/
-            systemctl daemon-reload && systemctl enable --now opencode
-          fi
-          echo "安装完成！访问 http://localhost:4096"
-          EOF
+          # Copy install script from repository (includes auto-dependency installation)
+          cp packaging/install.sh release/opencode/install.sh || cp install.sh release/opencode/install.sh
           chmod +x release/opencode/install.sh
 
           # Create tarball
