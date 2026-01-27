@@ -105,6 +105,47 @@ download_and_extract() {
   fi
 
   chmod +x "${INSTALL_DIR}/bin/"* 2>/dev/null || true
+
+  # Create improved start.sh with fallback support
+  create_start_script
+}
+
+create_start_script() {
+  info "创建启动脚本..."
+  cat > "${INSTALL_DIR}/start.sh" << 'STARTEOF'
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+run_with_bun() {
+  echo "[INFO] Using Bun to run OpenCode..."
+  if ! command -v bun >/dev/null 2>&1; then
+    echo "[INFO] Installing Bun..."
+    curl -fsSL https://bun.sh/install | bash
+    export PATH="${HOME}/.bun/bin:${PATH}"
+  fi
+  cd "${SCRIPT_DIR}/backend" && bun install --frozen-lockfile 2>/dev/null || bun install
+  export OPENCODE_WEB_ROOT="${SCRIPT_DIR}/web"
+  export CC_SWITCH_SERVER_PATH="${SCRIPT_DIR}/bin/cc-switch-server"
+  exec bun run --conditions=browser src/index.ts serve --mode prod --hostname 0.0.0.0 --port 4096
+}
+
+# Try binary first, fallback to Bun if it fails
+if [[ -x "${SCRIPT_DIR}/bin/opencode" ]]; then
+  # Test if binary can run
+  if "${SCRIPT_DIR}/bin/opencode" --version >/dev/null 2>&1; then
+    export OPENCODE_WEB_ROOT="${SCRIPT_DIR}/web"
+    export CC_SWITCH_SERVER_PATH="${SCRIPT_DIR}/bin/cc-switch-server"
+    exec "${SCRIPT_DIR}/bin/opencode" serve --mode prod --hostname 0.0.0.0 --port 4096
+  else
+    echo "[WARN] Binary exists but cannot run, falling back to Bun..."
+    run_with_bun
+  fi
+else
+  run_with_bun
+fi
+STARTEOF
+  chmod +x "${INSTALL_DIR}/start.sh"
 }
 
 install_dependencies() {
@@ -165,19 +206,31 @@ install_systemd() {
     return
   fi
 
-  local service_src="${INSTALL_DIR}/systemd/opencode.service"
   local service_dst="/etc/systemd/system/opencode.service"
 
-  if [[ -f "${service_src}" ]]; then
-    info "安装 systemd 服务..."
-    cp "${service_src}" "${service_dst}"
-    systemctl daemon-reload
-    systemctl enable opencode.service
-    info "启动服务..."
-    systemctl start opencode.service
-  else
-    warn "未找到 systemd 服务文件"
-  fi
+  # Create systemd service that uses start.sh for fallback support
+  info "创建 systemd 服务..."
+  cat > "${service_dst}" << EOF
+[Unit]
+Description=OpenCode Self-Hosted (Web + API)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=${INSTALL_DIR}
+ExecStart=${INSTALL_DIR}/start.sh
+Restart=on-failure
+RestartSec=5
+Environment=HOME=/root
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  systemctl daemon-reload
+  systemctl enable opencode.service
+  info "启动服务..."
+  systemctl start opencode.service
 }
 
 start_service() {
